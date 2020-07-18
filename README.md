@@ -30,6 +30,7 @@ adds two codes to try.
 It is also possible to specify a range of ROOT+x codes to test. This option is very slow but
 will take around 90 minutes at most. Currently  this is not working on stid135.
 
+````
 Usage: src/blindscan [OPTIONS]
 
 Options:
@@ -51,4 +52,4 @@ Options:
   -d,--diseqc TEXT=UC         diseqc command string (C: send committed command; U: send uncommitted command
   -U,--uncommitted INT=0      uncommitted switch number (lowest is 0)
   -C,--committed INT=0        committed switch number (lowest is 0)
-
+````
