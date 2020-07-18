@@ -52,4 +52,3 @@ Options:
   -U,--uncommitted INT=0      uncommitted switch number (lowest is 0)
   -C,--committed INT=0        committed switch number (lowest is 0)
 
-$
