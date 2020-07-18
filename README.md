@@ -1,4 +1,4 @@
-# blindscan
+# Neumo Blindscan
 User space code for DVB blind scanning on tbs based DVB cards.
 Currently supports stid135-based cards (tbs6909x and tbs6903x) and
 stv091x based card (tbs 5927).
@@ -38,7 +38,7 @@ RESULT: freq=11178.144V Symrate=29996 Stream=12    pls_mode= 0:16416 ISI list: 4
 SIG=-41.7dB SIG= 85% CNR=17.30dB CNR= 86% SYS(21) 8PSK FEC_3_5  INV_OFF PIL_ON  ROL_AUTO
 ````
 
-##Usage 
+## Usage 
 
 ````
 Usage: src/blindscan [OPTIONS]
