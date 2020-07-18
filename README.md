@@ -30,6 +30,15 @@ adds two codes to try.
 It is also possible to specify a range of ROOT+x codes to test. This option is very slow but
 will take around 90 minutes at most. Currently  this is not working on stid135.
 
+Currently the result of the scan is not saved in any format usable by other programs.
+Check the lines starting with `RESULT:` for useful output.
+For example:
+````
+RESULT: freq=11178.144V Symrate=29996 Stream=12    pls_mode= 0:16416 ISI list: 4 13 5 12
+SIG=-41.7dB SIG= 85% CNR=17.30dB CNR= 86% SYS(21) 8PSK FEC_3_5  INV_OFF PIL_ON  ROL_AUTO
+````
+
+
 ````
 Usage: src/blindscan [OPTIONS]
 
