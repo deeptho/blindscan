@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2019 deeptho@gmail.com
+ * Neumo dvb (C) 2020 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -47,13 +47,18 @@
 #include <cassert>
 #include <iostream>
 #include<regex>
-#include <boost/program_options.hpp>
 #include "CLI/CLI.hpp"
 #include "neumofrontend.h"
 
 
-using namespace boost;
-namespace po = boost::program_options;
+
+int tune_it(int fefd, int frequency_, int polarisation);
+int do_lnb_and_diseqc(int fefd, int frequency, int polarisation);
+int tune(int fefd, int frequency, int polarisation, int pls_mode, int pls_code);
+int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, int polarisation);
+uint32_t scan_band(int fefd, int efd,
+									 int start_frequency, int end_frequency, int polarisation);
+
 
 static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
 	return (timeout&0xff) | ((pls_code & 0x3FFFF)<<8) | (((pls_mode) & 0x3)<<26);
@@ -83,6 +88,8 @@ struct options_t {
 	int uncommitted{0};
 	int committed{0};
 
+	int32_t stream_id{-1}; //pls_code to always install (unused)
+
 	options_t() = default;
 	void parse_pls(const std::vector<std::string>& pls_entries);
 	int parse_options(int argc, char**argv);
@@ -90,6 +97,17 @@ struct options_t {
 
 options_t options;
 
+static constexpr uint32_t  lnb_slof = 11700*1000UL;
+static constexpr uint32_t lnb_lof_low = 9750*1000UL;
+static constexpr uint32_t lnb_lof_high = 10600*1000UL;
+
+uint32_t get_lo_frequency(uint32_t frequency)		{
+	if (frequency < lnb_slof) {
+		return  lnb_lof_low;
+	} else {
+		return lnb_lof_high;
+	}
+}
 
 
 void options_t::parse_pls(const std::vector<std::string>& pls_entries)
@@ -182,37 +200,6 @@ int options_t::parse_options(int argc, char**argv)
 	printf("}\n");
 
 	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
-
-
-	return 0;
-
-	po::options_description desc("NeumoDVB receiver test program");
-	try {
-		desc.add_options()
-			("help,h", "show usage")
-			("start-pls-code", po::value(&start_pls_code), "Start of PLS code range to start (mode=ROOT!)")
-			("end-pls-code", po::value(&end_pls_code), "End of PLS code range to start (mode=ROOT!)")
-			("adapter,a", po::value(&adapter_no), "Adapter number")
-			("frontend", po::value(&frontend_no), "frontend number")
-			("diseqc,d", "diseqc command string (C: send committed command; U: send uncommitted command")
-			("uncommitted,U", po::value(&uncommitted)->default_value(0), "uncommitted switch number (lowest is 0)")
-			("committed,C", po::value(&committed)->default_value(0), "ccommitted switch number (lowest is 0)")
-			;
-
-		po::variables_map vm;
-		po::store(po::command_line_parser(argc, argv).options(desc)
-							.run(), vm);
-		po::notify(vm);
-		if (vm.count("help")) {
-			std::cerr << desc << "\n";
-			return -1;
-		}
-
-	} catch(std::exception& e) {
-		std::cerr << e.what() << "\n";
-		std::cerr << desc << "\n";
-		return -1;
-	}
 
 	if(options.end_freq < options.start_freq)
 		options.end_freq = options.start_freq+1; //scan single freq
@@ -576,21 +563,6 @@ int tune(int fefd, int frequency, int polarisation, int pls_mode, int pls_code)
 	do_lnb_and_diseqc(fefd, frequency, polarisation);
 	return tune_it(fefd, frequency, polarisation, pls_mode, pls_code);
 }
-
-//static constexpr uint32_t lnb_lof_standard =DEFAULT_LOF_STANDARD;
-static constexpr uint32_t  lnb_slof = 11700*1000UL;
-static constexpr uint32_t lnb_lof_low = 9750*1000UL;
-static constexpr uint32_t lnb_lof_high = 10600*1000UL;
-
-
-uint32_t get_lo_frequency(uint32_t frequency)		{
-	if (frequency < lnb_slof) {
-		return  lnb_lof_low;
-	} else {
-		return lnb_lof_high;
-	}
-}
-
 
 
 struct cmdseq_t {
