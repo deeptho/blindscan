@@ -1409,10 +1409,6 @@ int main_spectrum(int fefd)
 }
 
 
-
-
-
-
 int main(int argc, char**argv)
 {
 	if(options.parse_options(argc, argv)<0)
