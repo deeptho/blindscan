@@ -1,11 +1,23 @@
-# Neumo Blindscan
-User space code for DVB blind scanning on tbs based DVB cards.
+# Neumo-blindscan
+User space code for DVB blind scanning, getting spectra... on tbs based DVB cards.
 Currently supports stid135-based cards (tbs6909x and tbs6903x) and
 stv091x based card (tbs 5927).
 
-The code requires a patched kernel tree which is (will be) available
+The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
 
+# Spectrum Scan
+
+`./neumo-blindscan  -c spectrum` will scan a satellite in less 30 seconds with a resolution of 2MHz on tbs5927/ 
+The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
+
+Here are some example spectra:
+
+![example spectrum 5.0W Horizontal](doc/images/5.0WH.png)
+
+![example spectrum 5.0W Vertical](doc/images/5.0WV.png)
+
+# Blindscan
 The blind scan code scans all or some of the frequency spectrum
 available on a DVB-S2 tuner. The scanned portion is the range
 [start-freq, end-freq]. Unless -p is specified, both polarisations
