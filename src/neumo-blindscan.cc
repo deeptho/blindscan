@@ -64,6 +64,16 @@ static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
 	return (timeout&0xff) | ((pls_code & 0x3FFFF)<<8) | (((pls_mode) & 0x3)<<26);
 }
 
+
+static constexpr int lnb_slof = 11700*1000UL;
+static constexpr int lnb_lof_low = 9750*1000UL;
+static constexpr int lnb_lof_high = 10600*1000UL;
+
+enum blindscan_method_t {
+	SCAN_EXHAUSTIVE = 1, // old method: steps to the frequency bands and starts a blindscan tune
+	SCAN_FREQ_PEAKS, //scans for rising and falling frequency peaks and launches blindscan there
+};
+
 struct options_t {
 	int start_freq = 10700000; //in kHz
 	int end_freq = 12750000; //in kHz
@@ -71,6 +81,7 @@ struct options_t {
 	int search_range{10000}; //in kHz
 	int max_symbol_rate{45000}; //in kHz
 	int pol =3;
+	blindscan_method_t method{SCAN_FREQ_PEAKS};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		//In use on 5.0W
@@ -97,9 +108,7 @@ struct options_t {
 
 options_t options;
 
-static constexpr uint32_t  lnb_slof = 11700*1000UL;
-static constexpr uint32_t lnb_lof_low = 9750*1000UL;
-static constexpr uint32_t lnb_lof_high = 10600*1000UL;
+
 
 uint32_t get_lo_frequency(uint32_t frequency)		{
 	if (frequency < lnb_slof) {
@@ -154,7 +163,11 @@ int options_t::parse_options(int argc, char**argv)
 	CLI::App app{"Blind scanner for tbs cards"};
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH",3}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
+	std::map<std::string, blindscan_method_t> method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
 	std::vector<std::string> pls_entries;
+
+	app.add_option("--method", method, "Blindscan method", true)
+		->transform(CLI::CheckedTransformer(method_map, CLI::ignore_case));
 
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
@@ -193,7 +206,7 @@ int options_t::parse_options(int argc, char**argv)
 	printf("step-freq=%d\n", step_freq);
 
 	printf("pol=%d\n", pol);
-
+	assert(max_symbol_rate>=0 && max_symbol_rate <=60000);
 	printf("pls_codes[%ld]={ ", pls_codes.size());
 	for(auto c: pls_codes)
 		printf("%d, ",c);
@@ -274,14 +287,14 @@ static inline void msleep(uint32_t msec)
 	while (nanosleep(&req, &req));
 }
 
-int lo_frequency = 0;
+
 
 
 #define FREQ_MULT 1000
 
 #define CBAND_LOF 5150
 
-std::tuple<int, int> getinfo(int fefd, int polarisation)
+std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, int lo_frequency)
 {
 	ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &signal);
 
@@ -354,7 +367,9 @@ std::tuple<int, int> getinfo(int fefd, int polarisation)
 	currentinv = dtv_inversion_prop;
 	currentrol = dtv_rolloff_prop;
 	currentpil = dtv_pilot_prop;
-	assert(currentpol == 1-polarisation);
+	//assert(currentpol == 1-polarisation);
+	if(currentfreq < allowed_freq_min)
+		return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
 	if (dtv_frequency_prop != 0)
 		printf("RESULT: freq=%-8.3f%c ", currentfreq/ (double)FREQ_MULT, polarisation? 'V': 'H');
 	else
@@ -528,43 +543,6 @@ void close_frontend(int fefd)
 	}
 }
 
-
-
-int clear(int fefd)
-{
-
-	struct dtv_property pclear[] = {
-		{ .cmd = DTV_CLEAR,},		//RESET frontend's cached data
-
-	};
-	struct dtv_properties cmdclear = {
-		.num = 1,
-		.props = pclear
-	};
-	if ((ioctl(fefd, FE_SET_PROPERTY, &cmdclear)) == -1) {
-		printf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
-		//set_interrupted(ERROR_TUNE<<8);
-		return -1;
-	}
-	return 0;
-}
-
-
-
-int tune_it(int fefd, int frequency_, int polarisation, int pls_mode, int pls_code);
-int do_lnb_and_diseqc(int fefd, int frequency, int polarisation);
-
-int tune(int fefd, int frequency, int polarisation, int pls_mode, int pls_code)
-{
-	printf("Tuning to DVBS %.3f%c\n", frequency/1000., polarisation? 'V': 'H');
-	if(clear(fefd)<0)
-		return -1;
-
-	do_lnb_and_diseqc(fefd, frequency, polarisation);
-	return tune_it(fefd, frequency, polarisation, pls_mode, pls_code);
-}
-
-
 struct cmdseq_t {
 	struct dtv_properties cmdseq{};
 	std::array<struct dtv_property, 16> props;
@@ -582,13 +560,13 @@ struct cmdseq_t {
 	};
 
 	void add_pls_codes(int cmd, uint32_t* codes, int num_codes) {
-		printf("adding pls_codes\n");
+		//printf("adding pls_codes\n");
 		assert(cmdseq.num< props.size()-1);
 		auto* tvp = &cmdseq.props[cmdseq.num];
 		memset(tvp, 0, sizeof(cmdseq.props[cmdseq.num]));
 		tvp->cmd = cmd;
 		num_codes =std::min(num_codes,  (int)(sizeof(tvp->u.buffer.data)/sizeof(uint32_t)));
-		printf("adding %d scramble codes\n", num_codes);
+		//printf("adding %d scramble codes\n", num_codes);
 		for(int i=0; i< num_codes; ++i)
 			memcpy(&tvp->u.buffer.data[i*sizeof(uint32_t)], &codes[i], sizeof(codes[0]));
 		tvp->u.buffer.len = num_codes*sizeof(uint32_t);
@@ -616,18 +594,127 @@ struct cmdseq_t {
 		}
 		return 0;
 	}
+
+	int scan(int fefd, bool init) {
+		add(DTV_SCAN, init);
+		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
+			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
+			return -1;
+		}
+		return 0;
+	}
 };
+
+
+int clear(int fefd)
+{
+
+	struct dtv_property pclear[] = {
+		{ .cmd = DTV_CLEAR,},		//RESET frontend's cached data
+
+	};
+	struct dtv_properties cmdclear = {
+		.num = 1,
+		.props = pclear
+	};
+	if ((ioctl(fefd, FE_SET_PROPERTY, &cmdclear)) == -1) {
+		printf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
+		//set_interrupted(ERROR_TUNE<<8);
+		return -1;
+	}
+	return 0;
+}
+
+
+
+
+int tune(int fefd, int frequency, int polarisation)
+{
+	printf("Tuning to DVBS %.3f%c\n", frequency/1000., polarisation? 'V': 'H');
+	if(clear(fefd)<0)
+		return -1;
+
+	do_lnb_and_diseqc(fefd, frequency, polarisation);
+	return tune_it(fefd, frequency, polarisation);
+}
+
+
+
+int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, int polarisation, bool init)
+{
+	cmdseq_t cmdseq;
+	if(clear(fefd)<0)
+		return -1;
+
+	do_lnb_and_diseqc(fefd, start_freq_, polarisation);
+
+
+	auto lo_frequency = get_lo_frequency(start_freq_);
+	assert(lo_frequency == get_lo_frequency(end_freq_-1)); //range must be withing a single band
+	assert(polarisation==0 || polarisation==1);
+
+	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
+	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
+
+	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
+
+	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
+	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq);
+	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
+
+	cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+#if 0
+	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
+	cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
+	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+#endif
+
+	if(options.pls_codes.size()>0)
+		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
+
+	if(options.end_pls_code> options.start_pls_code)
+		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+
+	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+
+	return cmdseq.scan(fefd, init);
+
+}
+
+int driver_continue_blindscan(int fefd)
+{
+	cmdseq_t cmdseq;
+	if(clear(fefd)<0)
+		return -1;
+	const bool init=false;
+
+	if(options.pls_codes.size()>0)
+		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
+
+	if(options.end_pls_code> options.start_pls_code)
+		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+
+	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+
+	return cmdseq.scan(fefd, init);
+	return cmdseq.scan(fefd, init);
+
+}
+
+
+
+
 
 
 /*
 	pls_mode>=0 means that only this pls will be scanned (no unscrambled transponders)
 	Usually it is better to use pls_modes; these will be used in addition to unscrambled
  */
-int tune_it(int fefd, int frequency_, int polarisation, int pls_mode, int pls_code)
+int tune_it(int fefd, int frequency_, int polarisation)
 {
 	cmdseq_t cmdseq;
 
-	lo_frequency = get_lo_frequency(frequency_);
+	auto lo_frequency = get_lo_frequency(frequency_);
 	auto frequency= (long)(frequency_-(signed)lo_frequency);
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
@@ -645,11 +732,7 @@ int tune_it(int fefd, int frequency_, int polarisation, int pls_mode, int pls_co
 	if(options.end_pls_code> options.start_pls_code)
 		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
 
-
-
-	int stream_id = pls_mode < 0  ? -1 :
-		(stream_id&0xff) | ((pls_code & 0x3FFFF)<<8) | (((pls_mode) & 0x3)<<26);
-	cmdseq.add(DTV_STREAM_ID,  stream_id);
+	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
 
 
 	return cmdseq.tune(fefd);
@@ -945,13 +1028,8 @@ int do_lnb_and_diseqc(int fefd, int frequency, int polarisation)
 }
 
 
-
-
-
-
 uint32_t scan_freq(int fefd, int efd,
-									 int frequency, int polarisation,
-									 int pls_mode, int pls_code)
+									 int frequency, int polarisation)
 {
 	int ret=0;
 	printf("==========================\n");
@@ -963,7 +1041,7 @@ uint32_t scan_freq(int fefd, int efd,
 			break;
 	}
 
-	ret = tune(fefd, frequency, polarisation, pls_mode, pls_code);
+	ret = tune(fefd, frequency, polarisation);
 	if(ret!=0) {
 		printf("Tune FAILED\n");
 		exit(1);
@@ -1002,7 +1080,8 @@ uint32_t scan_freq(int fefd, int efd,
 
 	if(check_lock_status(fefd)) {
 		auto old = frequency;
-		auto [found_freq, bw2] = getinfo(fefd, polarisation);
+		auto lo_frequency = get_lo_frequency(frequency);
+		auto [found_freq, bw2] = getinfo(fefd, polarisation, 	frequency-options.search_range/2, lo_frequency);
 		frequency = found_freq + bw2;
 		frequency += options.search_range/2;
 	} else
@@ -1012,12 +1091,77 @@ uint32_t scan_freq(int fefd, int efd,
 }
 
 
+uint32_t scan_band(int fefd, int efd,
+									 int start_frequency, int end_frequency, int polarisation)
+{
+	int ret=0;
+	printf("==========================\n");
+	printf("SEARCH: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000., polarisation? 'V':'H');
+	auto lo_frequency = get_lo_frequency(start_frequency);
+	while(1)  {
+		struct dvb_frontend_event event{};
+		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
+			break;
+	}
+	bool init =true;
+
+	ret = driver_start_blindscan(fefd, start_frequency, end_frequency, polarisation, init);
+	if(ret!=0) {
+		printf("Tune FAILED\n");
+		exit(1);
+	}
+
+	struct dvb_frontend_event event{};
+	bool timedout=false;
+	bool locked=false;
+	bool done = false;
+	bool found = false;
+	int count=0;
+	for(;!timedout && !done; ++count) {
+		struct epoll_event events[1]{{}};
+		auto s = epoll_wait(efd, events, 1, epoll_timeout);
+		if(s<0)
+			printf("\tEPOLL failed: err=%s\n", strerror(errno));
+		if(s==0) {
+			printf("\tTIMEOUT\n");
+			timedout=true;
+			break;
+		}
+		int r = ioctl(fefd, FE_GET_EVENT, &event);
+		if(r<0)
+			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
+		else {
+			done = event.status & FE_TIMEDOUT;  //fake flag indicating that driver algo has finished with complete scan
+			found = event.status & FE_HAS_SYNC; //flag indicating driver has found something
+			if(found || done)
+				printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d done=%d\n", event.status, timedout, found, done);
+
+			if(found) {
+				if (check_lock_status(fefd)) {
+					getinfo(fefd, polarisation, 0, lo_frequency);
+				} else
+					printf("\tnot locked\n");
+			}
+		}
+		if(found && !done) {
+			count=0;
+			printf("retuning\n");
+			init = false;
+			ret = driver_continue_blindscan(fefd);
+			if(ret!=0) {
+				printf("Tune FAILED\n");
+				exit(1);
+			}
+		}
+	}
+	return 0;
+}
 
 
-int main_blindscan(int fefd)
+
+int main_blindscan_slow(int fefd)
 {
 	int uncommitted = 0;
-	std::string diseqc_command{"U"};
 
 	clear(fefd);
 	int efd = epoll_create1 (0);	//create an epoll instance
@@ -1030,16 +1174,48 @@ int main_blindscan(int fefd)
 	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
 	if(s<0)
 		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s==0);\
+	assert(s==0);
 	for(int polarisation=0; polarisation<2; ++polarisation) {
 		//0=H 1=V
 		if(!((1<<polarisation) & options.pol))
 			continue; //this pol not needed
 		for(auto frequency=options.start_freq; frequency < options.end_freq;) {
-			const int pls_mode = -1;
-			const int pls_code = -1;
-			auto new_frequency = scan_freq(fefd, efd, frequency, polarisation, pls_mode, pls_code);
+			auto new_frequency = scan_freq(fefd, efd, frequency, polarisation);
 			frequency = new_frequency> frequency ? new_frequency: frequency + options.step_freq;
+		}
+	}
+	return 0;
+}
+
+int main_blindscan(int fefd)
+{
+	int uncommitted = 0;
+
+	clear(fefd);
+	int efd = epoll_create1 (0);	//create an epoll instance
+
+	struct epoll_event ep;
+	memset(&ep, 0, sizeof(ep));
+
+	ep.data.fd = fefd; //user data
+	ep.events = EPOLLIN|EPOLLERR|EPOLLHUP|EPOLLET; //edge triggered!
+	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
+	if(s<0)
+		printf("EPOLL Failed: err=%s\n", strerror(errno));
+	assert(s==0);
+
+	for(int polarisation=0; polarisation<2; ++polarisation) {
+		//0=H 1=V
+		if(!((1<<polarisation) & options.pol))
+			continue; //this pol not needed
+		if(options.start_freq <= lnb_slof) {
+			//scanning (part of) low band
+			scan_band(fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
+		}
+
+		if(options.end_freq > lnb_slof) {
+			//scanning (part of) high band
+			scan_band(fefd, efd, lnb_slof,  options.end_freq, polarisation);
 		}
 	}
 	return 0;

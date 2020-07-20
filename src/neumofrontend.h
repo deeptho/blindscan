@@ -593,9 +593,11 @@ enum fe_interleaving {
 #define DTV_PLS_SEARCH_RANGE 78 //Range of PLS scrambling modes/codes to test during scan
 #define DTV_SCAN_START_FREQUENCY 79
 #define DTV_SCAN_END_FREQUENCY 80
-#define DTV_SCAN 81
+#define DTV_SCAN_RESOLUTION 81
+#define DTV_SCAN 82
+#define DTV_SPECTRUM 83
 
-#define DTV_MAX_COMMAND	 DTV_SCAN
+#define DTV_MAX_COMMAND	 DTV_SPECTRUM
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
 #define DTV_ALGO_ABORT 1
@@ -900,6 +902,25 @@ struct dtv_stats {
 #define MAX_DTV_STATS   4
 
 /**
+ * struct dtv_fe_spectrum - decriptor for a spectrum scan buffer
+ *
+ * when calling FE_SET_FRONTEND:
+ * @freq: buffer created by caller with num_freq elements; will be filled with data;
+ * @rf_level: buffer created by caller with num_freq elements; will be filled with data
+ * @num_freq:	set by caller: length of the buffer, will be replaced on return with the true size,
+ * which will be less or equal
+ * @scale: after return this will contain FE_SCALE_DECIBEL or FE_SCALE_RELATIVE
+ *
+ */
+struct dtv_fe_spectrum {
+	__u32 *freq;
+	__s32 *rf_level;
+	__u32 num_freq;
+	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
+};
+
+
+/**
  * struct dtv_fe_stats - store Digital TV frontend statistics
  *
  * @len:	length of the statistics - if zero, stats is disabled.
@@ -938,6 +959,7 @@ struct dtv_property {
 	union {
 		__u32 data;
 		struct dtv_fe_stats st;
+		struct dtv_fe_spectrum spectrum;
 		struct {
 			__u8 data[32];
 			__u32 len;
@@ -1031,22 +1053,8 @@ struct dvb_fe_constellation_samples {
 #define DTV_MAX_CONSTELLATION_SAMPLES 1000
 #define FE_GET_CONSTELLATION_SAMPLES    _IOR('o', 84, struct dvb_fe_constellation_samples)
 
-typedef enum spectrum_scan {
-	SC_DB   = 0x00,
-	SC_DBM  = 0x01,
-	SC_GAIN = 0x02
-} spectrum_scan_t;
 
 
-struct dvb_fe_spectrum_scan {
-	__u32 *freq;
-	__u16 num_freq;
-	__s32 *rf_level;
-	__u32 *type;
-};
-
-#define DTV_MAX_SPECTRUM_SCAN_STEPS     4096
-#define FE_GET_SPECTRUM_SCAN            _IOW('o', 85, struct dvb_fe_spectrum_scan)
 #define FE_GET_EXTENDED_INFO		_IOR('o', 86, struct dvb_frontend_extended_info)
 
 #if defined(__DVB_CORE__) || !defined(__KERNEL__)
