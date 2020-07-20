@@ -1,4 +1,4 @@
-# Neumo-lindscan
+# Neumo-blindscan
 User space code for DVB blind scanning, getting spectra... on tbs based DVB cards.
 Currently supports stid135-based cards (tbs6909x and tbs6903x) and
 stv091x based card (tbs 5927).
