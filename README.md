@@ -14,7 +14,9 @@ The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by d
 Here are some example spectra:
 
 ![example spectrum 5.0W Horizontal](doc/images/5.0WH.png)
+
 ![example spectrum 5.0W Vertical](doc/images/5.0WV.png)
+
 # Blindscan
 The blind scan code scans all or some of the frequency spectrum
 available on a DVB-S2 tuner. The scanned portion is the range
