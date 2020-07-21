@@ -11,7 +11,7 @@ at https://github.com/deeptho/linux_media
 `./neumo-blindscan  -c spectrum` will scan a satellite in less 30 seconds with a resolution of 2MHz on tbs5927/ 
 The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
 
-Here are some example spectra:
+Here are some example spectra for 5.0West; hortizontal and vertical.
 
 ![example spectrum 5.0W Horizontal](doc/images/5.0WH.png)
 
