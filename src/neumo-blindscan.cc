@@ -182,7 +182,7 @@ int options_t::parse_options(int argc, char**argv)
 	std::map<std::string, blindscan_method_t> method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
 	std::vector<std::string> pls_entries;
 
-	app.add_option("-c,--command", adapter_no, "Command to execute", true)
+	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
 
 	app.add_option("--method", method, "Blindscan method", true)
@@ -1423,7 +1423,14 @@ int main(int argc, char**argv)
 	int ret=0;
 	switch(options.command) {
 	case command_t::BLINDSCAN:
-		ret |= main_blindscan(fefd);
+		switch(options.method) {
+		case blindscan_method_t::SCAN_EXHAUSTIVE:
+			ret |= main_blindscan_slow(fefd);
+			break;
+		case blindscan_method_t::SCAN_FREQ_PEAKS:
+			ret |= main_blindscan(fefd);
+			break;
+		}
 		break;
 	case command_t::SPECTRUM:
 		ret |= main_spectrum(fefd);
