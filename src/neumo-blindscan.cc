@@ -86,8 +86,8 @@ enum class command_t : int {
 */
 struct options_t {
 	command_t command{command_t::SPECTRUM};
-	blindscan_method_t method{SCAN_FREQ_PEAKS};
-
+	blindscan_method_t blindscan_method{SCAN_FREQ_PEAKS};
+	dtv_fe_spectrum_method spectrum_method{SPECTRUM_METHOD_SWEEP};
 	int start_freq = 10700000; //in kHz
 	int end_freq = 12750000; //in kHz
 	int step_freq = 6000; //in kHz
@@ -177,16 +177,22 @@ int options_t::parse_options(int argc, char**argv)
 	//Level level{Level::Low};
 	CLI::App app{"Blind scanner for tbs cards"};
 	std::map<std::string, command_t> command_map{{"blindscan", command_t::BLINDSCAN}, {"spectrum", command_t::SPECTRUM}};
+	std::map<std::string, dtv_fe_spectrum_method>
+		spectrum_method_map{{"sweep", SPECTRUM_METHOD_SWEEP}, {"fft", SPECTRUM_METHOD_FFT}};
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH",3}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
-	std::map<std::string, blindscan_method_t> method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
+	std::map<std::string, blindscan_method_t>
+		blindscan_method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
 	std::vector<std::string> pls_entries;
 
 	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
 
-	app.add_option("--method", method, "Blindscan method", true)
-		->transform(CLI::CheckedTransformer(method_map, CLI::ignore_case));
+	app.add_option("--blindscan-method", blindscan_method, "Blindscan method", true)
+		->transform(CLI::CheckedTransformer(blindscan_method_map, CLI::ignore_case));
+
+	app.add_option("--spectrum-method", spectrum_method, "Spectrum method", true)
+		->transform(CLI::CheckedTransformer(spectrum_method_map, CLI::ignore_case));
 
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
@@ -487,8 +493,8 @@ std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, i
 	return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
 }
 
-uint32_t freqs[4094];
-int32_t rf_levels[4094];
+uint32_t freqs[65536];
+int32_t rf_levels[65536];
 
 void getspectrum(FILE* fpout, int fefd, int polarisation, int allowed_freq_min, int lo_frequency)
 {
@@ -501,7 +507,7 @@ void getspectrum(FILE* fpout, int fefd, int polarisation, int allowed_freq_min, 
 		.props = p
 	};
 	auto& spectrum = cmdseq.props[0].u.spectrum;
-	spectrum.num_freq=2048;
+	spectrum.num_freq=65536;
 	spectrum.freq = & freqs[0];
 	spectrum.rf_level = & rf_levels[0];
 	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
@@ -666,8 +672,8 @@ struct cmdseq_t {
 		}
 		return 0;
 	}
-	int spectrum(int fefd, int type) {
-		add(DTV_SPECTRUM, type);
+	int spectrum(int fefd, dtv_fe_spectrum_method method) {
+		add(DTV_SPECTRUM, method);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
 			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
 			return -1;
@@ -712,7 +718,8 @@ int tune(int fefd, int frequency, int polarisation)
 /*
 	@type: spectrum type
  */
-int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, int polarisation, int type)
+int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, int polarisation,
+													dtv_fe_spectrum_method method)
 {
 	cmdseq_t cmdseq;
 	if(clear(fefd)<0)
@@ -736,7 +743,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, int polarisa
 	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
 	cmdseq.add(DTV_SYMBOL_RATE,  2000*1000); //controls tuner bandwidth (in Hz)
 
-	return cmdseq.spectrum(fefd, type);
+	return cmdseq.spectrum(fefd, method);
 }
 
 
@@ -1270,8 +1277,7 @@ uint32_t spectrum_band(FILE*fpout, int fefd, int efd,
 			break;
 	}
 	bool init =true;
-	const int spectrum_type=0; //currently unused
-	ret = driver_start_spectrum(fefd, start_frequency, end_frequency, polarisation, spectrum_type);
+	ret = driver_start_spectrum(fefd, start_frequency, end_frequency, polarisation, options.spectrum_method);
 	if(ret!=0) {
 		printf("Start spectrum scan FAILED\n");
 		exit(1);
@@ -1423,7 +1429,7 @@ int main(int argc, char**argv)
 	int ret=0;
 	switch(options.command) {
 	case command_t::BLINDSCAN:
-		switch(options.method) {
+		switch(options.blindscan_method) {
 		case blindscan_method_t::SCAN_EXHAUSTIVE:
 			ret |= main_blindscan_slow(fefd);
 			break;

@@ -8,7 +8,7 @@ at https://github.com/deeptho/linux_media
 
 # Spectrum Scan
 
-`./neumo-blindscan  -c spectrum` will scan a satellite in less 30 seconds with a resolution of 2MHz on tbs5927/ 
+`./neumo-blindscan  -c spectrum` will scan a satellite in less 30 seconds with a resolution of 2MHz on tbs5927/
 The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
 
 Here are some example spectra for 5.0West; hortizontal and vertical.
@@ -16,6 +16,21 @@ Here are some example spectra for 5.0West; hortizontal and vertical.
 ![example spectrum 5.0W Horizontal](doc/images/5.0WH.png)
 
 ![example spectrum 5.0W Vertical](doc/images/5.0WV.png)
+
+# FFT Spectrum Scan
+
+`./neumo-blindscan -c spectrum  -U3 -pH -a0 --spectrum-method fft --spectral-resolution 100` will scan
+the full Ku band in one polarisation in about 50 seconds with a resolution of 100kHz on tbs6909x and
+tbs6903x. This is using the internal high speed fft engine.
+
+The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
+
+Here is a portion of a 100kHz spectrum captured on 5.0West, horizontal polarisation.
+It shows several narrow band transponders
+
+![example 100kHz resolution fft spectrum 5.0W Horizontal](doc/images/5.0W_100kHz.png)
+
+
 
 # Blindscan
 The blind scan code scans all or some of the frequency spectrum
@@ -50,7 +65,7 @@ RESULT: freq=11178.144V Symrate=29996 Stream=12    pls_mode= 0:16416 ISI list: 4
 SIG=-41.7dB SIG= 85% CNR=17.30dB CNR= 86% SYS(21) 8PSK FEC_3_5  INV_OFF PIL_ON  ROL_AUTO
 ````
 
-## Usage 
+## Usage
 
 ````
 Usage: src/blindscan [OPTIONS]
@@ -86,5 +101,3 @@ make
 ````
 
 The executable will be located in build/src/blindscan and can be copied to /usr/bin/
-
-  

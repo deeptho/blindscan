@@ -600,7 +600,7 @@ enum fe_interleaving {
 #define DTV_MAX_COMMAND	 DTV_SPECTRUM
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
-#define DTV_ALGO_ABORT 1
+#define DTV_STOP 1
 #define DTV_ALGO_GET_PROGRESS 2
 #define DTV_ALGO_WAIT_FOR_PROGRESS 3
 #define DTV_ALGO_MAX_COMMAND DTV_ALGO_WAIT_FOR_PROGRESS
@@ -902,13 +902,25 @@ struct dtv_stats {
 #define MAX_DTV_STATS   4
 
 /**
+	 enum  dtv_fe_spectrum_method;
+ **/
+enum dtv_fe_spectrum_method {
+	SPECTRUM_METHOD_SWEEP,
+	SPECTRUM_METHOD_FFT
+};
+
+
+/**
  * struct dtv_fe_spectrum - decriptor for a spectrum scan buffer
- *
- * when calling FE_SET_FRONTEND:
- * @freq: buffer created by caller with num_freq elements; will be filled with data;
- * @rf_level: buffer created by caller with num_freq elements; will be filled with data
+ * This is passed as an input to FE_GET_PROPERTY
+ * The caller should initialise the fields as followed
+ * @spectrum_method: method ti use for creating the spectrum
+ * @freq: buffer created by caller with num_freq elements; will be filled with data and should have
+ *  room for @num_freq elements
+ * @rf_level: buffer created by caller with num_freq elements; will be filled with data and should have
+ *  room for @num_freq elements
  * @num_freq:	set by caller: length of the buffer, will be replaced on return with the true size,
- * which will be less or equal
+ * if the true size is smaller => num_freq should be set as an upper bound
  * @scale: after return this will contain FE_SCALE_DECIBEL or FE_SCALE_RELATIVE
  *
  */
@@ -917,6 +929,7 @@ struct dtv_fe_spectrum {
 	__s32 *rf_level;
 	__u32 num_freq;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
+	__u8 spectrum_method;
 };
 
 
@@ -1052,7 +1065,6 @@ struct dvb_fe_constellation_samples {
 
 #define DTV_MAX_CONSTELLATION_SAMPLES 1000
 #define FE_GET_CONSTELLATION_SAMPLES    _IOR('o', 84, struct dvb_fe_constellation_samples)
-
 
 
 #define FE_GET_EXTENDED_INFO		_IOR('o', 86, struct dvb_frontend_extended_info)
