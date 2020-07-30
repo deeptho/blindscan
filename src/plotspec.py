@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import os
 import regex as re
 
-plt.ion()
 
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
@@ -37,7 +36,6 @@ def plotspec(fname, pol, lim=None):
     return
 
 
-d='/tmp'
 
 rx = re.compile('(spectrum)([HV]).dat$')
 def find_data(d='/tmp/'):
@@ -51,9 +49,26 @@ def find_data(d='/tmp/'):
               ret.append((fname, res.group(2)))
     return ret
 
+
+d='/tmp'
+
 files=find_data(d)
-
-
-
 for file, pol in files:
     plotspec(file, pol=pol)
+
+
+if __name__ == "__main__":
+    import signal
+    from matplotlib import pyplot as plt
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+        import sys, inspect
+        if sys.ps1: interpreter = True
+    except AttributeError:
+        interpreter = False
+        if sys.flags.interactive: interpreter = True
+    if interpreter:
+        plt.ion()
+    else:
+        plt.ioff()
+        plt.show()
