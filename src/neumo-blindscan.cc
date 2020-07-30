@@ -328,7 +328,7 @@ static inline void msleep(uint32_t msec)
 
 #define CBAND_LOF 5150
 
-std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, int lo_frequency)
+std::tuple<int, int> getinfo(FILE*fpout, int fefd, int polarisation, int allowed_freq_min, int lo_frequency)
 {
 	ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &signal);
 
@@ -444,7 +444,6 @@ std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, i
 			printf("CNR=%3lld?? ", (dtv_stat_cnr_prop.stat[i].uvalue*100)/65537);
 	}
 
-
 	switch (dtv_delivery_system_prop) {
 	case 4:  printf("DSS    ");  break;
 	case 5:  printf("DVB-S  ");  break;
@@ -495,6 +494,25 @@ std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, i
 	case 2:  printf("ROL_25\n");   break;
 	case 3:  printf("ROL_AUTO\n"); break;
 	default: printf("ROL (%d)\n", dtv_rolloff_prop); break;
+	}
+
+	if(fpout) {
+		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n",
+						dtv_delivery_system_prop==6 ? 2:1, dtv_frequency_prop +(signed) lo_frequency,
+						polarisation? 'V': 'H',
+						currentsr,
+						dtv_inner_fec_prop <8 ? dtv_inner_fec_prop:
+						dtv_inner_fec_prop == FEC_3_5 ? 3:
+						dtv_inner_fec_prop == FEC_9_10 ? 9:
+						dtv_inner_fec_prop == FEC_2_5 ? 2: 0,
+						dtv_inner_fec_prop <8 ? (dtv_inner_fec_prop+1):
+						dtv_inner_fec_prop == FEC_3_5 ? 5:
+						dtv_inner_fec_prop == FEC_9_10 ? 10:
+						dtv_inner_fec_prop == FEC_2_5 ? 5 :0,
+						dtv_modulation_prop ==0? "QPSK":
+						dtv_modulation_prop ==9? "8PSK": "AUTO"
+			);
+		fflush(fpout);
 	}
 
 	return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
@@ -1207,7 +1225,7 @@ uint32_t scan_freq(int fefd, int efd,
 	if(check_lock_status(fefd)) {
 		auto old = frequency;
 		auto lo_frequency = get_lo_frequency(frequency);
-		auto [found_freq, bw2] = getinfo(fefd, polarisation, 	frequency-options.search_range/2, lo_frequency);
+		auto [found_freq, bw2] = getinfo(NULL, fefd, polarisation, 	frequency-options.search_range/2, lo_frequency);
 		frequency = found_freq + bw2;
 		frequency += options.search_range/2;
 	} else
@@ -1278,9 +1296,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
 
 			if(found) {
 				if (true||check_lock_status(fefd)) {
-					auto [found_freq, bw2] = getinfo(fefd, polarisation, 0, lo_frequency);
-					fprintf(fpout_bs, "%d %d\n", found_freq, bw2);
-					fflush(fpout_bs);
+					auto [found_freq, bw2] = getinfo(fpout_bs, fefd, polarisation, 0, lo_frequency);
 				} else
 					printf("\tnot locked\n");
 			}

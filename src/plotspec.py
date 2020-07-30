@@ -9,21 +9,27 @@ import os
 import regex as re
 
 
+def load_blindscan(fname):
+    x=np.loadtxt(fname, dtype={'names': ('standard', 'frequency', 'polarisation',
+                                         'symbol_rate','rolloff', 'modulation'),
+                               'formats': ('S1', 'i8', 'S1', 'i8', 'S1', 'S1')})
+    return x['frequency']
+
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
     have_blindscan = False
-    try:
+    if True:
         x=np.loadtxt(fname)
         f=x[:,0]
         spec = x[:,1]
         ax.plot(f, spec, label="spectrum (dB)")
 
-        tps=np.loadtxt(fname.replace('spectrum', 'blindscan'))
-        f1= tps[:,0]/1000
-        spec1 = tps[:,0]*0+-70000
+        tps=load_blindscan(fname.replace('spectrum', 'blindscan'))
+        f1= tps/1000
+        spec1 = tps*0+-70000
         ax.plot( f1, spec1,  '+', label="Found TPs")
         have_blindscan = True
-    except:
+    else:
         pass
     if have_blindscan:
         title='Blindscan result - {fname}'
@@ -69,6 +75,7 @@ if __name__ == "__main__":
         if sys.flags.interactive: interpreter = True
     if interpreter:
         plt.ion()
+        plt.show()
     else:
         plt.ioff()
         plt.show()
