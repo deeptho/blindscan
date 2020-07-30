@@ -56,11 +56,7 @@ int tune_it(int fefd, int frequency_, int polarisation);
 int do_lnb_and_diseqc(int fefd, int frequency, int polarisation);
 int tune(int fefd, int frequency, int polarisation, int pls_mode, int pls_code);
 int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, int polarisation);
-uint32_t scan_band(int fefd, int efd,
-									 int start_frequency, int end_frequency, int polarisation);
 
-uint32_t spectrum_band(int fefd, int efd,
-									 int start_frequency, int end_frequency, int polarisation);
 
 
 static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
@@ -522,7 +518,7 @@ uint32_t freq[65536];
 int32_t rf_level[65536];
 int32_t rf_band[65536];
 
-void getspectrum(FILE* fpout, int fefd, int polarisation, int lo_frequency)
+void getspectrum(FILE** fpout, const char*fname, int fefd, int polarisation, int lo_frequency)
 {
 	struct dtv_property p[] = {
 		{ .cmd = DTV_SPECTRUM},  // 0 DVB-S, 9 DVB-S2
@@ -548,13 +544,13 @@ void getspectrum(FILE* fpout, int fefd, int polarisation, int lo_frequency)
 
 	if(spectrum.num_freq <=0) {
 		printf("kernel returned spectrum with 0 samples\n");
-		assert(0);
 		return;
 	}
-	assert(fpout);
+	if(!*fpout)
+		*fpout =fopen(fname, "w");
 	for(int i=0; i<spectrum.num_freq;++i) {
 		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
-		fprintf(fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], spectrum.rf_band[i]);
+		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], spectrum.rf_band[i]);
 	}
 }
 
@@ -1235,7 +1231,7 @@ uint32_t scan_freq(int fefd, int efd,
 }
 
 
-uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
+uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spectrum, int fefd, int efd,
 									 int start_frequency, int end_frequency, int polarisation)
 {
 	int ret=0;
@@ -1287,7 +1283,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
 			done = event.status & FE_TIMEDOUT;  //fake flag indicating that driver algo has finished with complete scan
 			found = event.status & FE_HAS_LOCK; //flag indicating driver has found something
 			if((found||done) && first) {
-				getspectrum(fpout_spectrum, fefd, polarisation, lo_frequency);
+				getspectrum(fpout_spectrum, fname_spectrum, fefd, polarisation, lo_frequency);
 				first=false;
 			}
 			if(found || done)
@@ -1295,7 +1291,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
 							 signal,  carrier, viterbi, has_sync, timedout, has_lock);
 
 			if(found) {
-				if (true||check_lock_status(fefd)) {
+				if (check_lock_status(fefd)) {
 					auto [found_freq, bw2] = getinfo(fpout_bs, fefd, polarisation, 0, lo_frequency);
 				} else
 					printf("\tnot locked\n");
@@ -1315,7 +1311,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
 	return 0;
 }
 
-uint32_t spectrum_band(FILE*fpout, int fefd, int efd,
+uint32_t spectrum_band(FILE**fpout, const char*fname, int fefd, int efd,
 									 int start_frequency, int end_frequency, int polarisation)
 {
 	int ret=0;
@@ -1357,7 +1353,7 @@ uint32_t spectrum_band(FILE*fpout, int fefd, int efd,
 			printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d\n", event.status, timedout, found);
 			//assert(found);
 			if(found)
-				getspectrum(fpout, fefd, polarisation, lo_frequency);
+				getspectrum(fpout, fname, fefd, polarisation, lo_frequency);
 		}
 	}
 	return 0;
@@ -1411,10 +1407,11 @@ int main_blindscan(int fefd)
 
 	for(int polarisation=0; polarisation<2; ++polarisation) {
 		//0=H 1=V
-		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", polarisation? 'V':'H');
-		FILE*fpout_spectrum =fopen(fname, "w");
+		char fname_spectrum[512];
+		sprintf(fname_spectrum, options.filename_pattern.c_str(),  "spectrum", polarisation? 'V':'H');
+		FILE*fpout_spectrum = nullptr;
 
+		char fname[512];
 		sprintf(fname, options.filename_pattern.c_str(),  "blindscan", polarisation? 'V':'H');
 		FILE*fpout_bs =fopen(fname, "w");
 
@@ -1423,15 +1420,17 @@ int main_blindscan(int fefd)
 			continue; //this pol not needed
 		if(options.start_freq < lnb_slof) {
 			//scanning (part of) low band
-			scan_band(fpout_bs, fpout_spectrum, fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
+			scan_band(fpout_bs, &fpout_spectrum, fname_spectrum,
+								fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
 		}
 
 		if(options.end_freq > lnb_slof) {
 			//scanning (part of) high band
-			scan_band(fpout_bs, fpout_spectrum, fefd, efd, lnb_slof,  options.end_freq, polarisation);
+			scan_band(fpout_bs, &fpout_spectrum, fname_spectrum, fefd, efd, lnb_slof,  options.end_freq, polarisation);
 		}
 		fclose(fpout_bs);
-		fclose(fpout_spectrum);
+		if(fpout_spectrum)
+			fclose(fpout_spectrum);
 	}
 	return 0;
 }
@@ -1459,17 +1458,18 @@ int main_spectrum(int fefd)
 			continue; //this pol not needed
 		char fname[512];
 		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", polarisation? 'V':'H');
-		FILE*fpout =fopen(fname, "w");
+		FILE*fpout = nullptr;
 		if(options.start_freq < lnb_slof) {
 			//scanning (part of) low band
-			spectrum_band(fpout, fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
+			spectrum_band(&fpout, fname, fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
 		}
 
 		if(options.end_freq > lnb_slof) {
 			//scanning (part of) high band
-			spectrum_band(fpout, fefd, efd, lnb_slof,  options.end_freq, polarisation);
+			spectrum_band(&fpout, fname, fefd, efd, lnb_slof,  options.end_freq, polarisation);
 		}
-		fclose(fpout);
+		if(fpout)
+			fclose(fpout);
 	}
 	return 0;
 }

@@ -18,7 +18,7 @@ def load_blindscan(fname):
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
     have_blindscan = False
-    if True:
+    try:
         x=np.loadtxt(fname)
         f=x[:,0]
         spec = x[:,1]
@@ -29,7 +29,7 @@ def plotspec(fname, pol, lim=None):
         spec1 = tps*0+-70000
         ax.plot( f1, spec1,  '+', label="Found TPs")
         have_blindscan = True
-    else:
+    except:
         pass
     if have_blindscan:
         title='Blindscan result - {fname}'
