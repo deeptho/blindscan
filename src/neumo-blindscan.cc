@@ -94,9 +94,10 @@ struct options_t {
 	int search_range{10000}; //in kHz
 	int max_symbol_rate{45000}; //in kHz
 	int spectral_resolution{2000}; //in kHz
+	int fft_size{256}; //power of 2
 	int pol =3;
 
-	std::string filename_pattern{"/tmp/spectrum%c.dat"};
+	std::string filename_pattern{"/tmp/%s%c.dat"};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		//In use on 5.0W
@@ -202,6 +203,7 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-e,--end-freq", end_freq, "End of frequency range to scan (kHz)", true);
 	app.add_option("-S,--step-freq", step_freq, "Frequency step (kHz)", true);
 	app.add_option("-r,--spectral-resolution", spectral_resolution, "Spectral resolution (kHz)", true);
+	app.add_option("-f,--fft-size", fft_size, "FFT size", true);
 
 	app.add_option("-M,--max-symbol-rate", max_symbol_rate, "Maximal symbolrate (kHz)", true);
 	app.add_option("-R,--search-range", search_range, "search range (kHz)", true);
@@ -287,11 +289,16 @@ int check_lock_status(int fefd)
 		printf("FE_READ_STATUS: %s", strerror(errno));
 		return -1;
 	}
-	if(status & FE_TIMEDOUT) {
+			bool signal = status & FE_HAS_SIGNAL;
+			bool carrier = status & FE_HAS_CARRIER;
+			bool viterbi = status & FE_HAS_VITERBI;
+			bool has_sync = status & FE_HAS_SYNC;
+			bool has_lock = status & FE_HAS_LOCK;
+			bool timedout = status & FE_TIMEDOUT;
 
-	}
-	if(status & FE_HAS_LOCK) {
-	}
+			printf("\tFE_READ_STATUS: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", status,
+						 signal,  carrier, viterbi, has_sync, timedout, has_lock);
+
 	return status & FE_HAS_LOCK;
 }
 
@@ -493,10 +500,11 @@ std::tuple<int, int> getinfo(int fefd, int polarisation, int allowed_freq_min, i
 	return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
 }
 
-uint32_t freqs[65536];
-int32_t rf_levels[65536];
+uint32_t freq[65536];
+int32_t rf_level[65536];
+int32_t rf_band[65536];
 
-void getspectrum(FILE* fpout, int fefd, int polarisation, int allowed_freq_min, int lo_frequency)
+void getspectrum(FILE* fpout, int fefd, int polarisation, int lo_frequency)
 {
 	struct dtv_property p[] = {
 		{ .cmd = DTV_SPECTRUM},  // 0 DVB-S, 9 DVB-S2
@@ -508,8 +516,10 @@ void getspectrum(FILE* fpout, int fefd, int polarisation, int allowed_freq_min, 
 	};
 	auto& spectrum = cmdseq.props[0].u.spectrum;
 	spectrum.num_freq=65536;
-	spectrum.freq = & freqs[0];
-	spectrum.rf_level = & rf_levels[0];
+	spectrum.freq = & freq[0];
+	spectrum.rf_level = & rf_level[0];
+	spectrum.rf_band = & rf_band[0];
+
 	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
 		printf("ioctl failed: %s\n", strerror(errno));
 		assert(0); //todo: handle EINTR
@@ -526,7 +536,7 @@ void getspectrum(FILE* fpout, int fefd, int polarisation, int allowed_freq_min, 
 	assert(fpout);
 	for(int i=0; i<spectrum.num_freq;++i) {
 		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
-		fprintf(fpout, "%.6f %d\n", f*1e-3, spectrum.rf_level[i]);
+		fprintf(fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], spectrum.rf_band[i]);
 	}
 }
 
@@ -535,17 +545,19 @@ void close_frontend(int fefd);
 
 int get_frontend_info(int fefd)
 {
-	struct dvb_frontend_info fe_info{}; //front_end_info
+	struct dvb_frontend_extended_info fe_info{}; //front_end_info
 	//auto now =time(NULL);
 	//This does not produce anything useful. Driver would have to be adapted
 
 	int res;
-	if ( (res = ioctl(fefd, FE_GET_INFO, &fe_info) < 0)){
-		printf("FE_GET_INFO: %s", strerror(errno));
+	if ( (res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)){
+		printf("FE_GET_EXTENDED_INFO: %s", strerror(errno));
 		close_frontend(fefd);
 		return -1;
 	}
-
+	printf("Name of card: %s\n", fe_info.card_name);
+	printf("Name of device: %s\n", fe_info.dev_name);
+	printf("Name of frontend: %s\n", fe_info.name);
 	/*fe_info.frequency_min
 		fe_info.frequency_max
 		fe_info.symbolrate_min
@@ -741,6 +753,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, int polarisa
 	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
 
 	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
+	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
 	cmdseq.add(DTV_SYMBOL_RATE,  2000*1000); //controls tuner bandwidth (in Hz)
 
 	return cmdseq.spectrum(fefd, method);
@@ -766,13 +779,17 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, int polaris
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
 
 	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
+	//cmdseq.add(DTV_ALGORITHM,  ALGORITHM_NEXT);
 	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq);
 	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
 
+	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
+	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
+
 	cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-#if 0
+#if 1
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
+	//cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
 	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
 #endif
 
@@ -800,10 +817,12 @@ int driver_continue_blindscan(int fefd)
 
 	if(options.end_pls_code> options.start_pls_code)
 		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
+	//cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
+	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
 
 	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
 
-	return cmdseq.scan(fefd, init);
 	return cmdseq.scan(fefd, init);
 
 }
@@ -1198,7 +1217,7 @@ uint32_t scan_freq(int fefd, int efd,
 }
 
 
-uint32_t scan_band(int fefd, int efd,
+uint32_t scan_band(FILE* fpout_bs, FILE* fpout_spectrum, int fefd, int efd,
 									 int start_frequency, int end_frequency, int polarisation)
 {
 	int ret=0;
@@ -1219,6 +1238,7 @@ uint32_t scan_band(int fefd, int efd,
 	}
 
 	struct dvb_frontend_event event{};
+	bool first = true;
 	bool timedout=false;
 	bool locked=false;
 	bool done = false;
@@ -1238,14 +1258,29 @@ uint32_t scan_band(int fefd, int efd,
 		if(r<0)
 			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
 		else {
+			bool signal = event.status & FE_HAS_SIGNAL;
+			bool carrier = event.status & FE_HAS_CARRIER;
+			bool viterbi = event.status & FE_HAS_VITERBI;
+			bool has_sync = event.status & FE_HAS_SYNC;
+			bool has_lock = event.status & FE_HAS_LOCK;
+			timedout = event.status & FE_TIMEDOUT;
+
+
 			done = event.status & FE_TIMEDOUT;  //fake flag indicating that driver algo has finished with complete scan
-			found = event.status & FE_HAS_SYNC; //flag indicating driver has found something
+			found = event.status & FE_HAS_LOCK; //flag indicating driver has found something
+			if((found||done) && first) {
+				getspectrum(fpout_spectrum, fefd, polarisation, lo_frequency);
+				first=false;
+			}
 			if(found || done)
-				printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d done=%d\n", event.status, timedout, found, done);
+				printf("\tFE_GET_EVENT: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", event.status,
+							 signal,  carrier, viterbi, has_sync, timedout, has_lock);
 
 			if(found) {
-				if (check_lock_status(fefd)) {
-					getinfo(fefd, polarisation, 0, lo_frequency);
+				if (true||check_lock_status(fefd)) {
+					auto [found_freq, bw2] = getinfo(fefd, polarisation, 0, lo_frequency);
+					fprintf(fpout_bs, "%d %d\n", found_freq, bw2);
+					fflush(fpout_bs);
 				} else
 					printf("\tnot locked\n");
 			}
@@ -1306,7 +1341,7 @@ uint32_t spectrum_band(FILE*fpout, int fefd, int efd,
 			printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d\n", event.status, timedout, found);
 			//assert(found);
 			if(found)
-				getspectrum(fpout, fefd, polarisation, 0, lo_frequency);
+				getspectrum(fpout, fefd, polarisation, lo_frequency);
 		}
 	}
 	return 0;
@@ -1345,7 +1380,6 @@ int main_blindscan_slow(int fefd)
 int main_blindscan(int fefd)
 {
 	int uncommitted = 0;
-
 	clear(fefd);
 	int efd = epoll_create1 (0);	//create an epoll instance
 
@@ -1361,17 +1395,27 @@ int main_blindscan(int fefd)
 
 	for(int polarisation=0; polarisation<2; ++polarisation) {
 		//0=H 1=V
+		char fname[512];
+		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", polarisation? 'V':'H');
+		FILE*fpout_spectrum =fopen(fname, "w");
+
+		sprintf(fname, options.filename_pattern.c_str(),  "blindscan", polarisation? 'V':'H');
+		FILE*fpout_bs =fopen(fname, "w");
+
+
 		if(!((1<<polarisation) & options.pol))
 			continue; //this pol not needed
-		if(options.start_freq <= lnb_slof) {
+		if(options.start_freq < lnb_slof) {
 			//scanning (part of) low band
-			scan_band(fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
+			scan_band(fpout_bs, fpout_spectrum, fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
 		}
 
 		if(options.end_freq > lnb_slof) {
 			//scanning (part of) high band
-			scan_band(fefd, efd, lnb_slof,  options.end_freq, polarisation);
+			scan_band(fpout_bs, fpout_spectrum, fefd, efd, lnb_slof,  options.end_freq, polarisation);
 		}
+		fclose(fpout_bs);
+		fclose(fpout_spectrum);
 	}
 	return 0;
 }
@@ -1398,9 +1442,9 @@ int main_spectrum(int fefd)
 		if(!((1<<polarisation) & options.pol))
 			continue; //this pol not needed
 		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  polarisation? 'V':'H');
+		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", polarisation? 'V':'H');
 		FILE*fpout =fopen(fname, "w");
-		if(options.start_freq <= lnb_slof) {
+		if(options.start_freq < lnb_slof) {
 			//scanning (part of) low band
 			spectrum_band(fpout, fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq), polarisation);
 		}
@@ -1426,6 +1470,7 @@ int main(int argc, char**argv)
 	if(fefd<0) {
 		exit(1);
 	}
+	get_frontend_info(fefd);
 	int ret=0;
 	switch(options.command) {
 	case command_t::BLINDSCAN:
@@ -1447,7 +1492,3 @@ int main(int argc, char**argv)
 	}
 	return ret;
 }
-/*pol: 0=vertical=13volt 1=horizontal=18 volt
-5.0W 45Min. 28.2E 15 min (no pls codes)
-ebspro: 10min op 5.0W
-*/

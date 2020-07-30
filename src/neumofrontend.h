@@ -166,6 +166,17 @@ struct dvb_frontend_info {
 };
 
 struct dvb_frontend_extended_info {
+	char       card_name[128]; //name of card to which adapter is attached
+	char       dev_name[128]; //name device to which adapter is attached
+	char       name[128];
+	__u32      frequency_min;
+	__u32      frequency_max;
+	__u32      frequency_stepsize;
+	__u32      frequency_tolerance;
+	__u32      symbol_rate_min;
+	__u32      symbol_rate_max;
+	__u32      symbol_rate_tolerance;
+	enum fe_caps caps;
 	enum fe_extended_caps extended_caps;
 };
 
@@ -594,8 +605,9 @@ enum fe_interleaving {
 #define DTV_SCAN_START_FREQUENCY 79
 #define DTV_SCAN_END_FREQUENCY 80
 #define DTV_SCAN_RESOLUTION 81
-#define DTV_SCAN 82
-#define DTV_SPECTRUM 83
+#define DTV_SCAN_FFT_SIZE 82
+#define DTV_SCAN 83
+#define DTV_SPECTRUM 84
 
 #define DTV_MAX_COMMAND	 DTV_SPECTRUM
 
@@ -903,6 +915,7 @@ struct dtv_stats {
 
 /**
 	 enum  dtv_fe_spectrum_method;
+	 Should be passed as integer parameter when setting DTV_SPECTRUM property
  **/
 enum dtv_fe_spectrum_method {
 	SPECTRUM_METHOD_SWEEP,
@@ -927,6 +940,7 @@ enum dtv_fe_spectrum_method {
 struct dtv_fe_spectrum {
 	__u32 *freq;
 	__s32 *rf_level;
+	__s32 *rf_band;
 	__u32 num_freq;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
 	__u8 spectrum_method;
