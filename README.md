@@ -80,19 +80,25 @@ on those transponders. If the transponder locks, the output is saved.
 
 On stv091x, the code searches for falling or rising edges of transponders. This is less reliable
 than the stid135 algorithm (see below). After a blindscan succeeds, the spectrum part for that transponder
-is skipped to avoid double detections and to save time.
+is skipped to avoid double detections and to save time. The main search parameters are
 
-On stid135, the code also searches for falling or rising edges of transponders but after acquiring the complete spectrum.
+* max-symbol-rate: determines how far to scan from an edge in the spectrum. Set higher for high symbol rates. High values 
+are usually recommended.
+
+
+On stid135, the code searches for central frequencies of transpondersafter acquiring the complete spectrum.
 The spectrum is of high resolution and the peak detector is more sophisticated. As a result most spectral peaks are
 found, even very weak or very narrow band ones. The code scans all candidate peaks and skips the spectrum part
-for any found transponder.
+for any found transponder. The main search parameters are:
+* search-range: determines how far to search from the center of frequency peaks. A typical vale is 10000
+* spectral-resolution: determines how finely to scan the spectrum. Use 50 for very low symbolrates. Otherwise use 100.
 
 The stid135 algorithm's peak finding is more reliable. On the other hand, the actual blindscan is slower for
 and less reliable for low symbol rates compared to stv091x. Also scanning false peaks is especially slow and
 this makes scanning slower than it could be.
-With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) takes about 6 minites.
+With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) takes about 6 minutes.
 
-Below is an example for scanning 5.0W with default paramaters.
+Below is an example for scanning 5.0W with default parameters.
 ```
 time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -f 512  --spectral-resolution 100
 ```
@@ -108,7 +114,7 @@ Here is the example:
 ![example 100kHz resolution fft scan 5.0W Horizontal](doc/images/tbs6909x_5.0wH_100kHz.png)
 
 The green pluses indicate the found tranponders. The orange ones are the candidate peaks. Several
-narrow band transponders are found properly (11456H, 2400 kS/s and 11480H, 3124KS/s), but three transponders with very low symbolrate are missed (11458H, 542 kS/s and 11465H, 668kHz). 11465H, 668kHz can be found somtimes with a spectral
+narrow band transponders are found properly (11456H, 2400 kS/s and 11480H, 3124KS/s), but three transponders with very low symbolrate are missed (11458H, 542 kS/s and 11465H, 668kHz). 11465H, 668kHz can be found sometimes with a spectral
 resolution setting o5 50kHz and can be tuned to reliably. The other one does not tune, even on stv091x on linux,
 even though it can be done on windows. So the drivers need some more improvememt.
 
