@@ -510,6 +510,7 @@ enum fe_interleaving {
 #define DTV_INVERSION		6
 #define DTV_DISEQC_MASTER	7
 #define DTV_SYMBOL_RATE		8
+
 #define DTV_INNER_FEC		9
 #define DTV_VOLTAGE		10
 #define DTV_TONE		11
@@ -608,8 +609,8 @@ enum fe_interleaving {
 #define DTV_SCAN_FFT_SIZE 82
 #define DTV_SCAN 83
 #define DTV_SPECTRUM 84
-
-#define DTV_MAX_COMMAND	 DTV_SPECTRUM
+#define DTV_MAX_SYMBOL_RATE	85 //for blindscan
+#define DTV_MAX_COMMAND	 DTV_MAX_SYMBOL_RATE
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
 #define DTV_STOP 1

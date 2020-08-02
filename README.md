@@ -15,13 +15,13 @@ Always use the latest versions from both repositories, or make sure that the ver
 The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
 
 There are two methods of spectrum scan: `sweep` and `fft`. `sweep` sweeps across the frequency spectrum and measures
-narrow band power, taking into account AGC settings. `fft` uses the builtin fft engine on the stid135 chip to scan 
+narrow band power, taking into account AGC settings. `fft` uses the builtin fft engine on the stid135 chip to scan
 the spectrum in very high resolution (100kHz per default, but 50kHz sometimes detects more narrow band transponders).
 
 The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but the name
 can be changed.
 
-## Sweep scan 
+## Sweep scan
 `./neumo-blindscan -c spectrum  -U3 -pH -a0 --spectrum-method sweep --spectral-resolution 500`
 will scan the horizontal polarisation.
 
@@ -61,7 +61,7 @@ It is also possible to specify a range of ROOT+x codes to test. This option is v
 will take around 90 minutes at most. Currently  this is not working on stid135.
 
 Blindscan results are saved in /tmp/blindscanH.dat and  /tmp/blindscanV.dat by default. Currently
-only the frequencies are logged. More detailed information is produced in the output printed on the 
+only the frequencies are logged. More detailed information is produced in the output printed on the
 screen. For example:
 ````
 RESULT: freq=11178.144V Symrate=29996 Stream=12    pls_mode= 0:16416 ISI list: 4 13 5 12
@@ -83,33 +83,33 @@ than the stid135 algorithm (see below). After a blindscan succeeds, the spectrum
 is skipped to avoid double detections and to save time.
 
 On stid135, the code also searches for falling or rising edges of transponders but after acquiring the complete spectrum.
-The spectrum is of high resolution and the peak detector is more sophisticated. As a result most spectral peaks are 
-found, even very weak or very narrow band ones. The code scans all candidate peaks and skips the spectrum part 
+The spectrum is of high resolution and the peak detector is more sophisticated. As a result most spectral peaks are
+found, even very weak or very narrow band ones. The code scans all candidate peaks and skips the spectrum part
 for any found transponder.
 
-The stid135 algorithm's peak finding is more reliable. On the other hand, the actual blindscan is slower for 
-and less reliable for low symbol rates compared to stv091x. Also scanning false peaks is especially slow and 
+The stid135 algorithm's peak finding is more reliable. On the other hand, the actual blindscan is slower for
+and less reliable for low symbol rates compared to stv091x. Also scanning false peaks is especially slow and
 this makes scanning slower than it could be.
 With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) takes about 6 minites.
 
 Below is an example for scanning 5.0W with default paramaters.
 ```
-time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -f 512  --spectral-resolution 100  
+time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -f 512  --spectral-resolution 100
 ```
-The most influential paramters are `spectral-resolution` (100kHz is fine, 50kHz is sometimes better), and 
-`search-range` (default: 10Mhz, higher is sometimes better).  `spectral-resolution` determines the accuracy 
-of the spectrum. Candidate peaks may be lost if the value is too high. `search-range` etertmines how for from the 
-candidate peak the blindscan can search for a lock. To find high symbolrate transponders (30Ms/s and more), a 
-larger value will find more transponders if the peak-finder does not find the center of the transponder, but 
+The most influential parameters are `spectral-resolution` (100kHz is fine, 50kHz is sometimes better), and
+`search-range` (default: 10Mhz, higher is sometimes better).  `spectral-resolution` determines the accuracy
+of the spectrum. Candidate peaks may be lost if the value is too high. `search-range` determines how far from the
+candidate peak the blindscan can search for a lock. To find high symbolrate transponders (30Ms/s and more), a
+larger value will find more transponders if the peak-finder does not find the center of the transponder, but
 rather a value closer to its edges.
- tbs6909x_5.0wH_100kHz.png
- 
+
+
 Here is the example:
 ![example 100kHz resolution fft scan 5.0W Horizontal](doc/images/tbs6909x_5.0wH_100kHz.png)
 
 The green pluses indicate the found tranponders. The orange ones are the candidate peaks. Several
-narrow band transponders are found properly (11456H, 2400 kS/s and 11480H, 3124KS/s), but three transponders with very low symbolrate are missed (11458H, 542 kS/s and 11465H, 668kHz). 11465H, 668kHz can be found somtimes with a spectral 
-resolution setting o5 50kHz and can be tuned to reliably. The other one does not tune, even on stv091x on linux, 
+narrow band transponders are found properly (11456H, 2400 kS/s and 11480H, 3124KS/s), but three transponders with very low symbolrate are missed (11458H, 542 kS/s and 11465H, 668kHz). 11465H, 668kHz can be found somtimes with a spectral
+resolution setting o5 50kHz and can be tuned to reliably. The other one does not tune, even on stv091x on linux,
 even though it can be done on windows. So the drivers need some more improvememt.
 
 

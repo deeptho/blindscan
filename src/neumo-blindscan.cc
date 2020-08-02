@@ -803,7 +803,7 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, int polaris
 	cmdseq.add(DTV_VOLTAGE,  1-polarisation);
 #if 1
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	//cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
+	cmdseq.add(DTV_MAX_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls blindscan search range  on stv091x
 	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
 #endif
 
