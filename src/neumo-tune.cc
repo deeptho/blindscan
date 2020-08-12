@@ -174,12 +174,8 @@ int options_t::parse_options(int argc, char**argv)
 		command_map{{"tune", command_t::TUNE},
 		{"iq", command_t::IQ}
 	};
-	std::map<std::string, dtv_fe_spectrum_method>
-		spectrum_method_map{{"sweep", SPECTRUM_METHOD_SWEEP}, {"fft", SPECTRUM_METHOD_FFT}};
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH",3}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
-	std::map<std::string, blindscan_method_t>
-		blindscan_method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
 	std::vector<std::string> pls_entries;
 
 	app.add_option("-c,--command", command, "Command to execute", true)
@@ -188,8 +184,8 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
 
-	app.add_option("-S,--symbol-rate", symbol_rate, "Maximal symbolrate (kHz)", true);
-	app.add_option("-R,--search-range", search_range, "search range (kHz)", true);
+	app.add_option("-S,--symbol-rate", symbol_rate, "Symbolrate (kHz)", true);
+	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
 		->transform(CLI::CheckedTransformer(pol_map, CLI::ignore_case));
@@ -201,10 +197,10 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("--start-pls-code", start_pls_code, "Start of PLS code range to start (mode=ROOT!)", true);
 	app.add_option("--end-pls-code", end_pls_code, "End of PLS code range to start (mode=ROOT!)", true);
 
-	app.add_option("-d,--diseqc", diseqc, "diseqc command string (C: send committed command; "
+	app.add_option("-d,--diseqc", diseqc, "Diseqc command string (C: send committed command; "
 								 "U: send uncommitted command", true);
-	app.add_option("-U,--uncommitted", uncommitted,  "uncommitted switch number (lowest is 0)", true);
-	app.add_option("-C,--committed", committed,  "committed switch number (lowest is 0)", true);
+	app.add_option("-U,--uncommitted", uncommitted,  "Uncommitted switch number (lowest is 0)", true);
+	app.add_option("-C,--committed", committed,  "Committed switch number (lowest is 0)", true);
 
 	try {
     app.parse(argc, argv);

@@ -202,7 +202,7 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
 
-	app.add_option("-s,--start-freq", start_freq, "Start of frequenc range to scan (kHz)", true);
+	app.add_option("-s,--start-freq", start_freq, "Start of frequency range to scan (kHz)", true);
 		//->required();
 	app.add_option("-e,--end-freq", end_freq, "End of frequency range to scan (kHz)", true);
 	app.add_option("-S,--step-freq", step_freq, "Frequency step (kHz)", true);
@@ -210,7 +210,7 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-F,--fft-size", fft_size, "FFT size", true);
 
 	app.add_option("-M,--max-symbol-rate", max_symbol_rate, "Maximal symbolrate (kHz)", true);
-	app.add_option("-R,--search-range", search_range, "search range (kHz)", true);
+	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
 		->transform(CLI::CheckedTransformer(pol_map, CLI::ignore_case));
