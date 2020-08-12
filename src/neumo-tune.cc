@@ -55,7 +55,7 @@
 int tune_it(int fefd, int frequency_, bool pol_is_v);
 int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v);
 int tune(int fefd, int frequency, bool pol_is_v);
-int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is_v);
+
 int driver_start_constellation(int fefd, int num_samples, int constel_select,
 															 dtv_fe_constellation_method method =CONSTELLATION_METHOD_DEFAULT);
 
@@ -78,26 +78,18 @@ enum blindscan_method_t {
 };
 
 enum class command_t : int {
-	BLINDSCAN,
-		SPECTRUM};
+	TUNE,
+		IQ};
 /* resolution = 500kHz : 60s
 	 resolution = 1MHz : 31s
 	 resolution = 2MHz : 16s
 */
 struct options_t {
-	command_t command{command_t::SPECTRUM};
-	blindscan_method_t blindscan_method{SCAN_FREQ_PEAKS};
-	dtv_fe_spectrum_method spectrum_method{SPECTRUM_METHOD_SWEEP};
-	int start_freq = 10700000; //in kHz
-	int freq = 10700000; //in kHz
-	int end_freq = 12750000; //in kHz
-	int step_freq = 6000; //in kHz
+	command_t command{command_t::TUNE};
 	int search_range{10000}; //in kHz
-	int max_symbol_rate{45000}; //in kHz
-	int spectral_resolution{2000}; //in kHz
-	int fft_size{256}; //power of 2
+	int freq;
+	int symbol_rate{45000}; //in kHz
 	int pol =3;
-
 	std::string filename_pattern{"/tmp/%s%c.dat"};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
@@ -179,8 +171,8 @@ int options_t::parse_options(int argc, char**argv)
 	//Level level{Level::Low};
 	CLI::App app{"Blind scanner for tbs cards"};
 	std::map<std::string, command_t>
-		command_map{{"blindscan", command_t::BLINDSCAN},
-		{"spectrum", command_t::SPECTRUM}
+		command_map{{"tune", command_t::TUNE},
+		{"iq", command_t::IQ}
 	};
 	std::map<std::string, dtv_fe_spectrum_method>
 		spectrum_method_map{{"sweep", SPECTRUM_METHOD_SWEEP}, {"fft", SPECTRUM_METHOD_FFT}};
@@ -193,28 +185,17 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
 
-	app.add_option("--blindscan-method", blindscan_method, "Blindscan method", true)
-		->transform(CLI::CheckedTransformer(blindscan_method_map, CLI::ignore_case));
-
-	app.add_option("--spectrum-method", spectrum_method, "Spectrum method", true)
-		->transform(CLI::CheckedTransformer(spectrum_method_map, CLI::ignore_case));
-
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
 
-	app.add_option("-s,--start-freq", start_freq, "Start of frequenc range to scan (kHz)", true);
-		//->required();
-	app.add_option("-e,--end-freq", end_freq, "End of frequency range to scan (kHz)", true);
-	app.add_option("-S,--step-freq", step_freq, "Frequency step (kHz)", true);
-	app.add_option("-r,--spectral-resolution", spectral_resolution, "Spectral resolution (kHz)", true);
-	app.add_option("-F,--fft-size", fft_size, "FFT size", true);
-
-	app.add_option("-M,--max-symbol-rate", max_symbol_rate, "Maximal symbolrate (kHz)", true);
+	app.add_option("-S,--symbol-rate", symbol_rate, "Maximal symbolrate (kHz)", true);
 	app.add_option("-R,--search-range", search_range, "search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
 		->transform(CLI::CheckedTransformer(pol_map, CLI::ignore_case));
 
+	app.add_option("-n,--num-samples", num_samples, "Number of IQ samples to fetch", true);
+	app.add_option("-f,--frequency", freq, "Frequency to tune for getting IQ samples", true);
 
 	app.add_option("--pls-modes", pls_entries, "PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +", true);
 	app.add_option("--start-pls-code", start_pls_code, "Start of PLS code range to start (mode=ROOT!)", true);
@@ -235,12 +216,10 @@ int options_t::parse_options(int argc, char**argv)
 	printf("adapter=%d\n", adapter_no);
 	printf("frontend=%d\n", frontend_no);
 
-	printf("start-freq=%d\n", start_freq);
-	printf("end-freq=%d\n", end_freq);
-	printf("step-freq=%d\n", step_freq);
+	printf("freq=%d\n", freq);
 
 	printf("pol=%d\n", pol);
-	assert(max_symbol_rate>=0 && max_symbol_rate <=60000);
+	assert(symbol_rate>=0 && symbol_rate <=60000);
 	printf("pls_codes[%ld]={ ", pls_codes.size());
 	for(auto c: pls_codes)
 		printf("%d, ",c);
@@ -248,8 +227,6 @@ int options_t::parse_options(int argc, char**argv)
 
 	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
 
-	if(options.end_freq < options.start_freq)
-		options.end_freq = options.start_freq+1; //scan single freq
 	return 0;
 }
 
@@ -572,17 +549,12 @@ void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples
 	if (num_samples > sizeof(samples)/sizeof(samples[0]))
 		num_samples  = sizeof(samples)/sizeof(samples[0]);
 	printf("==========================\n");
+	printf("Getting IQ samples\n");
 	assert(options.pol==2|| options.pol==1);
 	while(1)  {
 		struct dvb_frontend_event event{};
 		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
 			break;
-	}
-
-	ret = tune(fefd, options.freq, pol_is_v);
-	if(ret!=0) {
-		printf("Tune FAILED\n");
-		exit(1);
 	}
 
 	ret = driver_start_constellation(fefd, num_samples, constel_select);
@@ -855,37 +827,6 @@ int tune(int fefd, int frequency, bool pol_is_v)
 	return tune_it(fefd, frequency, pol_is_v);
 }
 
-/*
-	@type: spectrum type
- */
-int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_v,
-													dtv_fe_spectrum_method method)
-{
-	cmdseq_t cmdseq;
-	if(clear(fefd)<0)
-		return -1;
-
-	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
-
-
-	auto lo_frequency = get_lo_frequency(start_freq_);
-	assert(lo_frequency == get_lo_frequency(end_freq_-1)); //range must be withing a single band
-
-	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
-	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
-
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-
-	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
-	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
-
-	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
-	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
-	cmdseq.add(DTV_SYMBOL_RATE,  2000*1000); //controls tuner bandwidth (in Hz)
-
-	return cmdseq.spectrum(fefd, method);
-}
-
 
 
 int driver_start_constellation(int fefd, int num_samples, int constel_select,
@@ -897,74 +838,6 @@ int driver_start_constellation(int fefd, int num_samples, int constel_select,
 	cmdseq.constellation_samples(fefd, num_samples, constel_select, method);
 	return 0;
 }
-
-
-int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is_v, bool init)
-{
-	cmdseq_t cmdseq;
-	if(clear(fefd)<0)
-		return -1;
-
-	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
-
-
-	auto lo_frequency = get_lo_frequency(start_freq_);
-	assert(lo_frequency == get_lo_frequency(end_freq_-1)); //range must be withing a single band
-
-	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
-	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
-
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
-	//cmdseq.add(DTV_ALGORITHM,  ALGORITHM_NEXT);
-	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq);
-	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
-
-	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
-	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
-
-	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-#if 1
-	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	cmdseq.add(DTV_MAX_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls blindscan search range  on stv091x
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-#endif
-
-	if(options.pls_codes.size()>0)
-		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
-
-	if(options.end_pls_code> options.start_pls_code)
-		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
-
-	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
-
-	return cmdseq.scan(fefd, init);
-
-}
-
-int driver_continue_blindscan(int fefd)
-{
-	cmdseq_t cmdseq;
-	if(clear(fefd)<0)
-		return -1;
-	const bool init=false;
-
-	if(options.pls_codes.size()>0)
-		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
-
-	if(options.end_pls_code> options.start_pls_code)
-		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
-	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	//cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-
-	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
-
-	return cmdseq.scan(fefd, init);
-
-}
-
 
 
 
@@ -985,7 +858,7 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
 	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
+	cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
 	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
 	cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
 
@@ -1303,8 +1176,6 @@ uint32_t scan_freq(int fefd, int efd,
 {
 	int ret=0;
 	printf("==========================\n");
-	printf("SEARCH: %.3f-%.3f\n", (frequency-options.search_range/2)/1000., (frequency+options.search_range/2)/1000.);
-
 	while(1)  {
 		struct dvb_frontend_event event{};
 		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
@@ -1346,7 +1217,7 @@ uint32_t scan_freq(int fefd, int efd,
 	}
 
 	if(timedout)
-		return frequency + options.step_freq;
+		return frequency;
 
 	if(check_lock_status(fefd)) {
 		auto old = frequency;
@@ -1362,171 +1233,16 @@ uint32_t scan_freq(int fefd, int efd,
 }
 
 
-uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spectrum, int fefd,
-									 int efd, int start_frequency, int end_frequency, bool pol_is_v)
-{
-	int ret=0;
-	printf("==========================\n");
-	printf("SEARCH: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
-				 pol_is_v? 'V':'H');
-	auto lo_frequency = get_lo_frequency(start_frequency);
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
-			break;
-	}
-	bool init =true;
-
-	ret = driver_start_blindscan(fefd, start_frequency, end_frequency, pol_is_v, init);
-	if(ret!=0) {
-		printf("Tune FAILED\n");
-		exit(1);
-	}
-
-	struct dvb_frontend_event event{};
-	bool first = true;
-	bool timedout=false;
-	bool locked=false;
-	bool done = false;
-	bool found = false;
-	int count=0;
-	for(;!timedout && !done; ++count) {
-		struct epoll_event events[1]{{}};
-		auto s = epoll_wait(efd, events, 1, epoll_timeout);
-		if(s<0)
-			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if(s==0) {
-			printf("\tTIMEOUT\n");
-			timedout=true;
-			break;
-		}
-		int r = ioctl(fefd, FE_GET_EVENT, &event);
-		if(r<0)
-			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
-		else {
-			bool signal = event.status & FE_HAS_SIGNAL;
-			bool carrier = event.status & FE_HAS_CARRIER;
-			bool viterbi = event.status & FE_HAS_VITERBI;
-			bool has_sync = event.status & FE_HAS_SYNC;
-			bool has_lock = event.status & FE_HAS_LOCK;
-			timedout = event.status & FE_TIMEDOUT;
-
-
-			done = event.status & FE_TIMEDOUT;  //fake flag indicating that driver algo has finished with complete scan
-			found = event.status & FE_HAS_LOCK; //flag indicating driver has found something
-			if((found||done) && first) {
-				get_spectrum(fpout_spectrum, fname_spectrum, fefd,
-										 pol_is_v, lo_frequency);
-				first=false;
-			}
-			if(found || done)
-				printf("\tFE_GET_EVENT: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", event.status,
-							 signal,  carrier, viterbi, has_sync, timedout, has_lock);
-
-			if(found) {
-				if (true||check_lock_status(fefd)) {
-					auto [found_freq, bw2] = getinfo(fpout_bs, fefd, pol_is_v, 0, lo_frequency);
-				} else
-					printf("\tnot locked\n");
-			}
-		}
-		if(found && !done) {
-			count=0;
-			printf("retuning\n");
-			init = false;
-			ret = driver_continue_blindscan(fefd);
-			if(ret!=0) {
-				printf("Tune FAILED\n");
-				exit(1);
-			}
-		}
-	}
-	return 0;
-}
-
-uint32_t spectrum_band(FILE**fpout, const char*fname, int fefd, int efd,
-									 int start_frequency, int end_frequency, bool pol_is_v)
-{
-	int ret=0;
-	printf("==========================\n");
-	printf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
-				 pol_is_v? 'V':'H');
-	auto lo_frequency = get_lo_frequency(start_frequency);
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
-			break;
-	}
-	bool init =true;
-	ret = driver_start_spectrum(fefd, start_frequency, end_frequency,
-															pol_is_v, options.spectrum_method);
-	if(ret!=0) {
-		printf("Start spectrum scan FAILED\n");
-		exit(1);
-	}
-	struct dvb_frontend_event event{};
-	bool timedout=false;
-	bool locked=false;
-	bool done = false;
-	bool found = false;
-	int count=0;
-	for(;!timedout && !found; ++count) {
-		struct epoll_event events[1]{{}};
-		auto s = epoll_wait(efd, events, 1, epoll_timeout);
-		if(s<0)
-			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if(s==0) {
-			printf("\tTIMEOUT\n");
-			timedout=true;
-			break;
-		}
-		int r = ioctl(fefd, FE_GET_EVENT, &event);
-		if(r<0)
-			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
-		else {
-			found = event.status & FE_HAS_SYNC; //flag indicating driver has found something
-			printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d\n", event.status, timedout, found);
-			//assert(found);
-			if(found)
-				get_spectrum(fpout, fname, fefd, pol_is_v, lo_frequency);
-		}
-	}
-	return 0;
-}
 
 
 
-int main_blindscan_slow(int fefd)
+
+int main_tune(int fefd)
 {
 	int uncommitted = 0;
-
-	clear(fefd);
-	int efd = epoll_create1 (0);	//create an epoll instance
-
-	struct epoll_event ep;
-	memset(&ep, 0, sizeof(ep));
-
-	ep.data.fd = fefd; //user data
-	ep.events = EPOLLIN|EPOLLERR|EPOLLHUP|EPOLLET; //edge triggered!
-	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
-	if(s<0)
-		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s==0);
-	for(int polarisation=0; polarisation<2; ++polarisation) {
-		//0=H 1=V
-		if(!((1<<polarisation) & options.pol))
-			continue; //this pol not needed
-		for(auto frequency=options.start_freq; frequency < options.end_freq;) {
-			auto new_frequency = scan_freq(fefd, efd, frequency, polarisation);
-			frequency = new_frequency> frequency ? new_frequency: frequency + options.step_freq;
-		}
-	}
-	return 0;
-}
-
-int main_blindscan(int fefd)
-{
-	int uncommitted = 0;
+	assert(options.pol==1 || options.pol==2);
+	bool pol_is_v = (options.pol == 2);
+	printf("Tuning\n");
 	clear(fefd);
 	int efd = epoll_create1 (0);	//create an epoll instance
 
@@ -1540,87 +1256,18 @@ int main_blindscan(int fefd)
 		printf("EPOLL Failed: err=%s\n", strerror(errno));
 	assert(s==0);
 
-	for(int pol_is_v_=0; pol_is_v_<2; ++pol_is_v_) {
-		bool pol_is_v = pol_is_v_;
-		//0=H 1=V
-		char fname_spectrum[512];
-		sprintf(fname_spectrum, options.filename_pattern.c_str(),  "spectrum", pol_is_v? 'V':'H');
-		FILE*fpout_spectrum = nullptr;
-
-		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "blindscan", pol_is_v? 'V':'H');
-		FILE*fpout_bs =fopen(fname, "w");
-
-
-		if(!((1<<pol_is_v) & options.pol))
-			continue; //this pol not needed
-		if(options.start_freq < lnb_slof) {
-			//scanning (part of) low band
-			scan_band(fpout_bs, &fpout_spectrum, fname_spectrum,
-								fefd, efd, options.start_freq, std::min(lnb_slof, options.end_freq),
-								pol_is_v);
-		}
-
-		if(options.end_freq > lnb_slof) {
-			//scanning (part of) high band
-			scan_band(fpout_bs, &fpout_spectrum, fname_spectrum, fefd, efd, lnb_slof,
-								options.end_freq, pol_is_v);
-		}
-		fclose(fpout_bs);
-		if(fpout_spectrum)
-			fclose(fpout_spectrum);
-	}
+	scan_freq(fefd, efd, options.freq, pol_is_v);
+	for(;;)
+		sleep(100);
 	return 0;
 }
-
-int main_spectrum(int fefd)
-{
-	int uncommitted = 0;
-
-	clear(fefd);
-	int efd = epoll_create1 (0);	//create an epoll instance
-
-	struct epoll_event ep;
-	memset(&ep, 0, sizeof(ep));
-
-	ep.data.fd = fefd; //user data
-	ep.events = EPOLLIN|EPOLLERR|EPOLLHUP|EPOLLET; //edge triggered!
-	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
-	if(s<0)
-		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s==0);
-
-	for(int pol_is_v_=0; pol_is_v_<2; ++pol_is_v_) {
-		bool pol_is_v =pol_is_v_;
-		//0=H 1=V
-		if(!((1<<pol_is_v_) & options.pol))
-			continue; //this pol not needed
-		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", pol_is_v? 'V':'H');
-		FILE*fpout = nullptr;
-		if(options.start_freq < lnb_slof) {
-			//scanning (part of) low band
-			spectrum_band(&fpout, fname, fefd, efd, options.start_freq,
-										std::min(lnb_slof, options.end_freq), pol_is_v);
-		}
-
-		if(options.end_freq > lnb_slof) {
-			//scanning (part of) high band
-			spectrum_band(&fpout, fname, fefd, efd, lnb_slof,  options.end_freq, pol_is_v);
-		}
-		if(fpout)
-			fclose(fpout);
-	}
-	return 0;
-}
-
-
 
 
 int main_constellation(int fefd)
 {
 	int uncommitted = 0;
 	bool pol_is_v = (options.pol == 2);
+	assert(options.pol==1 || options.pol==2);
 	printf("Getting IQ samples\n");
 	clear(fefd);
 	int efd = epoll_create1 (0);	//create an epoll instance
@@ -1654,18 +1301,11 @@ int main(int argc, char**argv)
 	get_frontend_info(fefd);
 	int ret=0;
 	switch(options.command) {
-	case command_t::BLINDSCAN:
-		switch(options.blindscan_method) {
-		case blindscan_method_t::SCAN_EXHAUSTIVE:
-			ret |= main_blindscan_slow(fefd);
-			break;
-		case blindscan_method_t::SCAN_FREQ_PEAKS:
-			ret |= main_blindscan(fefd);
-			break;
-		}
+	case command_t::TUNE:
+		ret |= main_tune(fefd);
 		break;
-	case command_t::SPECTRUM:
-		ret |= main_spectrum(fefd);
+	case command_t::IQ:
+		ret |= main_constellation(fefd);
 		break;
 	default:
 		break;

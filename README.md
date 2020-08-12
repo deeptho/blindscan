@@ -1,7 +1,7 @@
 # Neumo-blindscan
-User space code for DVB blind scanning, getting spectra... on tbs based DVB cards.
-Currently supports stid135-based cards (tbs6909x and tbs6903x) and
-stv091x based card (tbs5927).
+User space code for DVB blind scanning, getting spectra and getting IQ constellation samples
+on tbs based DVB cards. Currently supports stid135-based cards (tbs6909x and tbs6903x),
+stv091x based cards (tbs5927) and si2183 based cards (tbs6504).
 
 The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
@@ -82,7 +82,7 @@ On stv091x, the code searches for falling or rising edges of transponders. This 
 than the stid135 algorithm (see below). After a blindscan succeeds, the spectrum part for that transponder
 is skipped to avoid double detections and to save time. The main search parameters are
 
-* max-symbol-rate: determines how far to scan from an edge in the spectrum. Set higher for high symbol rates. High values 
+* max-symbol-rate: determines how far to scan from an edge in the spectrum. Set higher for high symbol rates. High values
 are usually recommended.
 
 
@@ -100,7 +100,7 @@ With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) ta
 
 Below is an example for scanning 5.0W with default parameters.
 ```
-time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -f 512  --spectral-resolution 100
+time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -F 512  --spectral-resolution 100
 ```
 The most influential parameters are `spectral-resolution` (100kHz is fine, 50kHz is sometimes better), and
 `search-range` (default: 10Mhz, higher is sometimes better).  `spectral-resolution` determines the accuracy
@@ -119,7 +119,19 @@ resolution setting o5 50kHz and can be tuned to reliably. The other one does not
 even though it can be done on windows. So the drivers need some more improvememt.
 
 
-## Usage
+# Obtaining constellation samples
+
+`./neumo-tune -a 8 -c iq -f 11138000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and otain
+8000 IQ samples. The samples will be saved in /tmp/iqV.dat
+Currently this requires an active DVB signal. THis will not work for inactive transponders or continuous stream transponders.
+
+# Blindscan tuning a single transponder
+
+`./neumo-tune -a 8 -c tune -f 11138000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and then wait forever.
+Currently this requires an active DVB signal. THis will not work for inactive transponders or continuous stream transponders.
+
+
+# Usage
 
 ````
 Usage: src/blindscan [OPTIONS]

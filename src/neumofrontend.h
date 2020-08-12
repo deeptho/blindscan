@@ -33,6 +33,7 @@ enum fe_extended_caps {
 	FE_CAN_SPECTRUMSCAN        = 0x01,
 	FE_CAN_IQ                  = 0x02,
 	FE_CAN_BLINDSEARCH         = 0x04,
+	FE_CAN_CONSTELLATION       = 0x10,
 	FE_CAN_MODCOD		   = 0x08
 };
 
@@ -510,7 +511,6 @@ enum fe_interleaving {
 #define DTV_INVERSION		6
 #define DTV_DISEQC_MASTER	7
 #define DTV_SYMBOL_RATE		8
-
 #define DTV_INNER_FEC		9
 #define DTV_VOLTAGE		10
 #define DTV_TONE		11
@@ -610,7 +610,8 @@ enum fe_interleaving {
 #define DTV_SCAN 83
 #define DTV_SPECTRUM 84
 #define DTV_MAX_SYMBOL_RATE	85 //for blindscan
-#define DTV_MAX_COMMAND	 DTV_MAX_SYMBOL_RATE
+#define DTV_CONSTELLATION 86
+#define DTV_MAX_COMMAND	 DTV_CONSTELLATION
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
 #define DTV_STOP 1
@@ -923,12 +924,16 @@ enum dtv_fe_spectrum_method {
 	SPECTRUM_METHOD_FFT
 };
 
+enum dtv_fe_constellation_method {
+	CONSTELLATION_METHOD_DEFAULT,
+};
+
 
 /**
  * struct dtv_fe_spectrum - decriptor for a spectrum scan buffer
  * This is passed as an input to FE_GET_PROPERTY
  * The caller should initialise the fields as followed
- * @spectrum_method: method ti use for creating the spectrum
+ * @spectrum_method: method to use for creating the spectrum
  * @freq: buffer created by caller with num_freq elements; will be filled with data and should have
  *  room for @num_freq elements
  * @rf_level: buffer created by caller with num_freq elements; will be filled with data and should have
@@ -964,6 +969,20 @@ struct dtv_fe_stats {
 	struct dtv_stats stat[MAX_DTV_STATS];
 } __attribute__ ((packed));
 
+
+struct dtv_fe_constellation_sample {
+	__s16 real;
+	__s16 imag;
+};
+
+struct dtv_fe_constellation {
+	__u32 num_samples;
+	struct dtv_fe_constellation_sample *samples;
+	__u8 method;
+	__u8 constel_select;
+};
+
+
 /**
  * struct dtv_property - store one of frontend command and its value
  *
@@ -988,6 +1007,7 @@ struct dtv_property {
 		__u32 data;
 		struct dtv_fe_stats st;
 		struct dtv_fe_spectrum spectrum;
+		struct dtv_fe_constellation constellation;
 		struct {
 			__u8 data[32];
 			__u32 len;
@@ -1066,20 +1086,6 @@ struct dtv_algo_ctrl {
 #define FE_SET_PROPERTY		   _IOW('o', 82, struct dtv_properties)
 #define FE_GET_PROPERTY		   _IOR('o', 83, struct dtv_properties)
 #define FE_ALGO_CTRL		     _IOW('o', 84) struct dtv_algo_ctrl)
-
-struct dvb_fe_constellation_sample {
-        __s8           real;
-        __s8           imaginary;
-};
-
-struct dvb_fe_constellation_samples {
-	__u32 num;
-	__u8  options;
-        struct dvb_fe_constellation_sample *samples;
-};
-
-#define DTV_MAX_CONSTELLATION_SAMPLES 1000
-#define FE_GET_CONSTELLATION_SAMPLES    _IOR('o', 84, struct dvb_fe_constellation_samples)
 
 
 #define FE_GET_EXTENDED_INFO		_IOR('o', 86, struct dvb_frontend_extended_info)
