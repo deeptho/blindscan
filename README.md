@@ -163,6 +163,33 @@ command will be sent twice. The switch ports are specified by the --uncommitted
 and --committed arguments
 
 
+
+````
+Usage: ./neumo-tune [OPTIONS]
+
+Options:
+  -h,--help                   Print this help message and exit
+  -c,--command ENUM:value in {iq->1,tune->0} OR {1,0}=0
+                              Command to execute
+  -a,--adapter INT=0          Adapter number
+  --frontend INT=0            Frontend number
+  -S,--symbol-rate INT=45000  Maximal symbolrate (kHz)
+  -R,--search-range INT=10000 search range (kHz)
+  -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
+                              Polarisation to scan
+  -n,--num-samples INT=1024   Number of IQ samples to fetch
+  -f,--frequency INT=0        Frequency to tune for getting IQ samples
+  --pls-modes TEXT=[] ...     PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +
+  --start-pls-code INT=-1     Start of PLS code range to start (mode=ROOT!)
+  --end-pls-code INT=-1       End of PLS code range to start (mode=ROOT!)
+  -d,--diseqc TEXT=UC         diseqc command string (C: send committed command; U: send uncommitted command
+  -U,--uncommitted INT=-1     uncommitted switch number (lowest is 0)
+  -C,--committed INT=-1       committed switch number (lowest is 0)
+
+````
+
+
+
 ## Compiling
 ````
 cd <whereever you have checkout>
