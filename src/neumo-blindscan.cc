@@ -538,12 +538,12 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 		.num = sizeof(p)/sizeof(p[0]),
 		.props = p
 	};
-	auto& spectrum = cmdseq.props[0].u.spectrum;
+	decltype(cmdseq.props[0].u.spectrum) spectrum{};
 	spectrum.num_freq=65536;
 	spectrum.freq = & freq[0];
 	spectrum.rf_level = & rf_level[0];
 	spectrum.rf_band = & rf_band[0];
-
+	cmdseq.props[0].u.spectrum = spectrum;
 	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
 		printf("ioctl failed: %s\n", strerror(errno));
 		assert(0); //todo: handle EINTR
@@ -629,9 +629,10 @@ void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples
 		char fname[512];
 		sprintf(fname, options.filename_pattern.c_str(),  "iq", pol_is_v? 'V':'H');
 
-		auto& cs =  cmdseq.props[0].u.constellation;
+		decltype(cmdseq.props[0].u.constellation) cs{};
 		cs.num_samples = sizeof(samples)/sizeof(samples[0]);
 		cs.samples = samples;
+		cmdseq.props[0].u.constellation =cs;
 		if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
 			printf("ioctl failed: %s\n", strerror(errno));
 			assert(0); //todo: handle EINTR
