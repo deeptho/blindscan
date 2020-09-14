@@ -79,7 +79,8 @@ enum blindscan_method_t {
 
 enum class command_t : int {
 	BLINDSCAN,
-		SPECTRUM};
+		SPECTRUM,
+		IQ};
 /* resolution = 500kHz : 60s
 	 resolution = 1MHz : 31s
 	 resolution = 2MHz : 16s
@@ -180,7 +181,8 @@ int options_t::parse_options(int argc, char**argv)
 	CLI::App app{"Blind scanner for tbs cards"};
 	std::map<std::string, command_t>
 		command_map{{"blindscan", command_t::BLINDSCAN},
-		{"spectrum", command_t::SPECTRUM}
+		{"spectrum", command_t::SPECTRUM},
+		{"iq", command_t::IQ}
 	};
 	std::map<std::string, dtv_fe_spectrum_method>
 		spectrum_method_map{{"sweep", SPECTRUM_METHOD_SWEEP}, {"fft", SPECTRUM_METHOD_FFT}};
@@ -335,7 +337,6 @@ static inline void msleep(uint32_t msec)
 
 std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_freq_min, int lo_frequency)
 {
-	ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &signal);
 
 	struct dtv_property p[] = {
 		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
@@ -549,7 +550,7 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 		assert(0); //todo: handle EINTR
 		return;
 	}
-
+	spectrum = cmdseq.props[0].u.spectrum;
 	int i=0;
 
 	if(spectrum.num_freq <=0) {
@@ -667,7 +668,7 @@ int get_frontend_info(int fefd)
 		return -1;
 	}
 	printf("Name of card: %s\n", fe_info.card_name);
-	printf("Name of device: %s\n", fe_info.dev_name);
+	printf("Name of adapter: %s\n", fe_info.adapter_name);
 	printf("Name of frontend: %s\n", fe_info.name);
 	/*fe_info.frequency_min
 		fe_info.frequency_max

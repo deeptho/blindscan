@@ -308,8 +308,6 @@ static inline void msleep(uint32_t msec)
 
 std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_freq_min, int lo_frequency)
 {
-	ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &signal);
-
 	struct dtv_property p[] = {
 		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
 		{ .cmd = DTV_FREQUENCY },
@@ -636,7 +634,7 @@ int get_frontend_info(int fefd)
 		return -1;
 	}
 	printf("Name of card: %s\n", fe_info.card_name);
-	printf("Name of device: %s\n", fe_info.dev_name);
+	printf("Name of adapter: %s\n", fe_info.adapter_name);
 	printf("Name of frontend: %s\n", fe_info.name);
 	/*fe_info.frequency_min
 		fe_info.frequency_max
@@ -851,6 +849,7 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 
 	auto lo_frequency = get_lo_frequency(frequency_);
 	auto frequency= (long)(frequency_-(signed)lo_frequency);
+#if 0
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
 	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
@@ -867,7 +866,28 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
 
 	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+#else
 
+	printf("BLIND SCAN search-range=%d\n", options.search_range);
+	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
+	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
+	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
+	cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
+	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+	cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
+
+	cmdseq.add(DTV_SYMBOL_RATE,  22000000);
+
+	if(options.pls_codes.size()>0)
+		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
+
+	if(options.end_pls_code> options.start_pls_code)
+		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+
+	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+
+#endif
 
 	return cmdseq.tune(fefd);
 }
