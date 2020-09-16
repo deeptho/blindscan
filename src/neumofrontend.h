@@ -167,9 +167,11 @@ struct dvb_frontend_info {
 };
 
 struct dvb_frontend_extended_info {
-	char       card_name[128]; //name of card to which adapter is attached
-	char       dev_name[128]; //name device to which adapter is attached
-	char       name[128];
+	char       card_name[64]; //human readable name of tuner card
+	char       adapter_name[64]; //human readable name of adapter
+	char       card_address[64]; //name of the linux bus to which the device is attached (e.g. pci-express slot)
+	char       adapter_address[64]; //unique name of adapter depending on pci-express address and physical input
+	char       name[64];
 	__u32      frequency_min;
 	__u32      frequency_max;
 	__u32      frequency_stepsize;
@@ -716,6 +718,7 @@ enum fe_delivery_system {
 	SYS_TURBO,
 	SYS_DVBC_ANNEX_C,
 	SYS_DVBC2,
+	SYS_DVBS2X,
 	SYS_DCII,
 	SYS_AUTO
 };

@@ -876,7 +876,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
 	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
 
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
+	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
 
 	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
 	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
