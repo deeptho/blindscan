@@ -55,7 +55,7 @@ git clone tbsdtv/media_build
 git clone --depth=1 deeptho/linux_media -b latest ./media
 cd media_build
 make dir DIR=../media
-make allyesconfig #This line may cause problems. First try without
+make allyesconfig
 make -j4
 sudo make install
 ```
