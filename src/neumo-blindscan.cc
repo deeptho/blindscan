@@ -99,7 +99,7 @@ struct options_t {
 	int fft_size{256}; //power of 2
 	int pol =3;
 
-	std::string filename_pattern{"/tmp/%s%c.dat"};
+	std::string filename_pattern{"/tmp/%s_a%d_%c.dat"};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		//In use on 5.0W
@@ -628,7 +628,8 @@ void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples
 			.props = p
 		};
 		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "iq", pol_is_v? 'V':'H');
+		sprintf(fname, options.filename_pattern.c_str(),  "iq", options.adapter_no,
+						pol_is_v? 'V':'H');
 
 		decltype(cmdseq.props[0].u.constellation) cs{};
 		cs.num_samples = sizeof(samples)/sizeof(samples[0]);
@@ -1546,11 +1547,15 @@ int main_blindscan(int fefd)
 		bool pol_is_v = pol_is_v_;
 		//0=H 1=V
 		char fname_spectrum[512];
-		sprintf(fname_spectrum, options.filename_pattern.c_str(),  "spectrum", pol_is_v? 'V':'H');
+		sprintf(fname_spectrum, options.filename_pattern.c_str(),  "spectrum",
+						options.adapter_no,
+						pol_is_v? 'V':'H');
 		FILE*fpout_spectrum = nullptr;
 
 		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "blindscan", pol_is_v? 'V':'H');
+		sprintf(fname, options.filename_pattern.c_str(),  "blindscan",
+						options.adapter_no,
+						pol_is_v? 'V':'H');
 		FILE*fpout_bs =fopen(fname, "w");
 
 
@@ -1598,7 +1603,8 @@ int main_spectrum(int fefd)
 		if(!((1<<pol_is_v_) & options.pol))
 			continue; //this pol not needed
 		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "spectrum", pol_is_v? 'V':'H');
+		sprintf(fname, options.filename_pattern.c_str(),  "spectrum",
+						options.adapter_no, pol_is_v? 'V':'H');
 		FILE*fpout = nullptr;
 		if(options.start_freq < lnb_slof) {
 			//scanning (part of) low band
