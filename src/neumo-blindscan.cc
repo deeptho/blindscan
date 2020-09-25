@@ -878,7 +878,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
 
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
-
+	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
 	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
 
@@ -927,7 +927,7 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
 	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
 
-	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 #if 1
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
 	cmdseq.add(DTV_MAX_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls blindscan search range  on stv091x
@@ -986,7 +986,7 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
 	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
 	cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
 	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
@@ -1261,6 +1261,10 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 		-after unsuccessful tuning, second attempt should use full diseqc
 	*/
 	int ret;
+
+#ifdef OLD_DISEQC
+	//this ioctl is also performed internally in modern kernels; save some time
+
 	/*
 
 		22KHz: off = low band; on = high band
@@ -1274,15 +1278,20 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 			return -1;
 		}
 	}
+#endif
 
 	//TODO: diseqc_command_string should be read from lnb
 
 	bool band_is_high = hi_lo(frequency);
 
+#ifdef OLD_DISEQC
+	//this ioctl is also performed internally in modern kernels; save some time
+
 	//Note: the following is a NOOP in case no diseqc needs to be sent
 	ret= diseqc(fefd, pol_is_v, band_is_high);
 	if(ret<0)
 		return ret;
+#endif
 
 	bool tone_turned_off = ret>0;
 
