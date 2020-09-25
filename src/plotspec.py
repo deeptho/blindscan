@@ -17,6 +17,7 @@ def load_blindscan(fname):
 
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
+    fig.canvas.set_window_title(fname)
     have_blindscan = False
     try:
         x=np.loadtxt(fname)
@@ -43,7 +44,7 @@ def plotspec(fname, pol, lim=None):
 
 
 
-rx = re.compile('(spectrum)([HV]).dat$')
+rx = re.compile('(spectrum)(_a[0-9]+_)*([HV]).dat$')
 def find_data(d='/tmp/'):
     ret=[]
     for root, dirs, files in os.walk(d):
@@ -51,14 +52,16 @@ def find_data(d='/tmp/'):
           res = re.match(rx, file)
           if res is not None:
               fname = os.path.join(root, file)
-              print(fname)
-              ret.append((fname, res.group(2)))
+              #print(fname)
+              ret.append((fname, res. group(3)))
     return ret
 
 
-d='/tmp'
+d=os.getcwd()
 
 files=find_data(d)
+
+
 for file, pol in files:
     plotspec(file, pol=pol)
 
