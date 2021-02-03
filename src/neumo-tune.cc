@@ -79,16 +79,25 @@ enum blindscan_method_t {
 
 enum class command_t : int {
 	TUNE,
-		IQ};
+	IQ};
+
+enum class algo_t : int {
+	BLIND,
+	WARM,
+	COLD};
+
 /* resolution = 500kHz : 60s
 	 resolution = 1MHz : 31s
 	 resolution = 2MHz : 16s
 */
 struct options_t {
 	command_t command{command_t::TUNE};
+	algo_t algo{algo_t::BLIND};
 	int search_range{10000}; //in kHz
 	int freq;
-	int symbol_rate{45000}; //in kHz
+	int symbol_rate{-1}; //in kHz
+	fe_modulation modulation{PSK_8};
+	fe_delivery_system delivery_system{SYS_DVBS2};
 	int pol =3;
 	std::string filename_pattern{"/tmp/%s%c.dat"};
 	std::string pls;
@@ -108,7 +117,7 @@ struct options_t {
 	int uncommitted{-1};
 	int committed{-1};
 	int num_samples{1024};
-	int32_t stream_id{-1}; //pls_code to always install (unused)
+	int32_t stream_id{-1}; //
 
 	options_t() = default;
 	void parse_pls(const std::vector<std::string>& pls_entries);
@@ -130,11 +139,12 @@ uint32_t get_lo_frequency(uint32_t frequency)		{
 
 void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 {
-	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,5})");
+	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
 	for(auto m: pls_entries) {
 		int mode;
 		int code;
+		bool inited=false;
 		if (std::regex_match(m, base_match, base_regex)) {
 			// The first sub_match is the whole string; the next
 			// sub_match is the first parenthesized expression.
@@ -158,21 +168,90 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 				if(sscanf(code_.c_str(), "%d", &code)!=1)
 					throw std::runtime_error("Invalid PLS code");
 			}
+			if(!inited) {
+				pls_codes.clear();
+				inited=true;
+			}
 			pls_codes.push_back(make_code(mode, code));
 		}
 		printf(" %d:%d", mode, code);
 	}
 	printf("\n");
-
 }
+
+std::map<std::string, fe_delivery_system>
+delsys_map{
+	{"DVBC",	 SYS_DVBC_ANNEX_A},
+	{"DVBT",	 SYS_DVBT},
+	{"DSS",	 SYS_DSS},
+	{"DVBS",	 SYS_DVBS},
+	{"DVBS2",	 SYS_DVBS2},
+	{"DVBH",	 SYS_DVBH},
+	{"ISDBT",	 SYS_ISDBT},
+	{"ISDBS",	 SYS_ISDBS},
+	{"ISDBC",	 SYS_ISDBC},
+	{"ATSC",	 SYS_ATSC},
+	{"ATSCMH",	 SYS_ATSCMH},
+	{"DTMB",	 SYS_DTMB},
+	{"CMMB",	 SYS_CMMB},
+	{"DAB",	 SYS_DAB},
+	{"DVBT2",	 SYS_DVBT2},
+	{"TURBO",	 SYS_TURBO},
+	{"DVBC2",	 SYS_DVBC2},
+	{"DVBS2X",	 SYS_DVBS2X},
+	{"DCII",	 SYS_DCII},
+	{"AUTO",	 SYS_AUTO}
+};
+
+
+std::map<std::string, fe_modulation>
+modulation_map{
+	{"QPSK", QPSK},
+	{"QAM_16", QAM_16},
+	{"QAM_32", QAM_32},
+	{"QAM_64", QAM_64},
+	{"QAM_128", QAM_128},
+	{"QAM_256", QAM_256},
+	{"QAM_AUTO", QAM_AUTO},
+	{"VSB_8", VSB_8},
+	{"VSB_16", VSB_16},
+	{"PSK_8", PSK_8},
+	{"APSK_16", APSK_16},
+	{"APSK_32", APSK_32},
+	{"DQPSK", DQPSK},
+	{"QAM_4_NR", QAM_4_NR},
+	{"C_QPSK", C_QPSK},
+	{"I_QPSK", I_QPSK},
+	{"Q_QPSK", Q_QPSK},
+	{"C_OQPSK", C_OQPSK},
+	{"QAM_512", QAM_512},
+	{"QAM_1024", QAM_1024},
+	{"QAM_4096", QAM_4096},
+	{"APSK_64", APSK_64},
+	{"APSK_128", APSK_128},
+	{"APSK_256", APSK_256},
+	{"APSK_8L", APSK_8L},
+	{"APSK_16L", APSK_16L},
+	{"APSK_32L", APSK_32L},
+	{"APSK_64L", APSK_64L},
+	{"APSK_128L", APSK_128L},
+	{"APSK_256L", APSK_256L},
+	{"APSK_1024", APSK_1024}
+};
+
 int options_t::parse_options(int argc, char**argv)
 {
 
 	//Level level{Level::Low};
-	CLI::App app{"Blind scanner for tbs cards"};
+	CLI::App app{"DVB tuning program"};
 	std::map<std::string, command_t>
 		command_map{{"tune", command_t::TUNE},
 		{"iq", command_t::IQ}
+	};
+	std::map<std::string, algo_t>
+		algo_map{{"blind", algo_t::BLIND},
+						 {"warm", algo_t::WARM},
+						 {"cold", algo_t::COLD}
 	};
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH",3}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
@@ -181,10 +260,18 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
 
+	app.add_option("-A,--algo", algo, "Algorithm for tuning", true)
+		->transform(CLI::CheckedTransformer(algo_map, CLI::ignore_case));
+
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
 
 	app.add_option("-S,--symbol-rate", symbol_rate, "Symbolrate (kHz)", true);
+	app.add_option("-m,--modulation", modulation, "modulation", true)
+				->transform(CLI::CheckedTransformer(modulation_map, CLI::ignore_case));
+	app.add_option("--delsys", delivery_system, "Delivery syste,", true)
+		->transform(CLI::CheckedTransformer(delsys_map, CLI::ignore_case));
+
 	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
@@ -192,8 +279,9 @@ int options_t::parse_options(int argc, char**argv)
 
 	app.add_option("-n,--num-samples", num_samples, "Number of IQ samples to fetch", true);
 	app.add_option("-f,--frequency", freq, "Frequency to tune for getting IQ samples", true);
+	app.add_option("-s,--stream-id", stream_id, "stream_id to select", true);
 
-	app.add_option("--pls-modes", pls_entries, "PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +", true);
+	app.add_option("--pls-code", pls_entries, "PLS mode (ROOT, GOLD, COMBO) and code (number) to scan, separated by +", true);
 	app.add_option("--start-pls-code", start_pls_code, "Start of PLS code range to start (mode=ROOT!)", true);
 	app.add_option("--end-pls-code", end_pls_code, "End of PLS code range to start (mode=ROOT!)", true);
 
@@ -215,7 +303,7 @@ int options_t::parse_options(int argc, char**argv)
 	printf("freq=%d\n", freq);
 
 	printf("pol=%d\n", pol);
-	assert(symbol_rate>=0 && symbol_rate <=60000);
+	assert(symbol_rate<0 || symbol_rate <=60000);
 	printf("pls_codes[%ld]={ ", pls_codes.size());
 	for(auto c: pls_codes)
 		printf("%d, ",c);
@@ -311,7 +399,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	struct dtv_property p[] = {
 		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
 		{ .cmd = DTV_FREQUENCY },
-		{ .cmd = DTV_VOLTAGE },         // 0 - 13V H, 1 - 18V V, 2 - Voltage OFF
+		{ .cmd = DTV_VOLTAGE },         // 0 - 13V Vertical, 1 - 18V horizontal, 2 - Voltage OFF
 		{ .cmd = DTV_SYMBOL_RATE },
 		{ .cmd = DTV_STAT_SIGNAL_STRENGTH	},
 		{ .cmd = DTV_STAT_CNR	},
@@ -497,44 +585,8 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 
 uint32_t freq[65536*4];
 int32_t rf_level[65536*4];
-int32_t rf_band[65536*4];
+int32_t candidate_frequencies[65536*4];
 
-void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int lo_frequency)
-{
-	struct dtv_property p[] = {
-		{ .cmd = DTV_SPECTRUM},  // 0 DVB-S, 9 DVB-S2
-		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
-	};
-	struct dtv_properties cmdseq = {
-		.num = sizeof(p)/sizeof(p[0]),
-		.props = p
-	};
-	decltype(cmdseq.props[0].u.spectrum) spectrum{};
-	spectrum.num_freq=65536;
-	spectrum.freq = & freq[0];
-	spectrum.rf_level = & rf_level[0];
-	spectrum.rf_band = & rf_band[0];
-	cmdseq.props[0].u.spectrum = spectrum;
-
-	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
-		printf("ioctl failed: %s\n", strerror(errno));
-		assert(0); //todo: handle EINTR
-		return;
-	}
-
-	int i=0;
-
-	if(spectrum.num_freq <=0) {
-		printf("kernel returned spectrum with 0 samples\n");
-		return;
-	}
-	if(!*fpout)
-		*fpout =fopen(fname, "w");
-	for(int i=0; i<spectrum.num_freq;++i) {
-		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
-		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], spectrum.rf_band[i]);
-	}
-}
 
 
 dtv_fe_constellation_sample samples[65536];
@@ -815,7 +867,7 @@ int clear(int fefd)
 
 int tune(int fefd, int frequency, bool pol_is_v)
 {
-	printf("Tuning to DVBS %.3f%c\n", frequency/1000., pol_is_v? 'V': 'H');
+	printf("Tuning to DVBS1/2 %.3f%c\n", frequency/1000., pol_is_v? 'V': 'H');
 	if(clear(fefd)<0)
 		return -1;
 
@@ -849,45 +901,46 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 
 	auto lo_frequency = get_lo_frequency(frequency_);
 	auto frequency= (long)(frequency_-(signed)lo_frequency);
-#if 0
-	printf("BLIND SCAN search-range=%d\n", options.search_range);
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-	cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
+	if(options.algo == algo_t::BLIND) {
+		printf("BLIND TUNE search-range=%d\n", options.search_range);
+		cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
+		cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
+		//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+		cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
+		if(options.symbol_rate>0)
+			cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
+		//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+		cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
 
-	if(options.pls_codes.size()>0)
-		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
+		if(options.pls_codes.size()>0)
+			cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
 
-	if(options.end_pls_code> options.start_pls_code)
-		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+		if(options.end_pls_code> options.start_pls_code)
+			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+		cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+	} else {
+		bool warm = options.algo == algo_t::WARM;
+		printf("%s TUNE search-range=%d\n", warm? "WARM": "COLD", options.search_range);
+		cmdseq.add(DTV_ALGORITHM,  warm ? ALGORITHM_WARM : ALGORITHM_COLD);
+		cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) options.delivery_system);
+		cmdseq.add(DTV_MODULATION,  (int) options.modulation);
+		//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+		cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
+		if(options.symbol_rate>0)
+			cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
+		//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+		cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
 
-	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
-#else
+		if(options.pls_codes.size()>0)
+			cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
 
-	printf("BLIND SCAN search-range=%d\n", options.search_range);
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
-	//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-	cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-	cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
-
-	cmdseq.add(DTV_SYMBOL_RATE,  22000000);
-
-	if(options.pls_codes.size()>0)
-		cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
-
-	if(options.end_pls_code> options.start_pls_code)
-		cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
-
-	cmdseq.add(DTV_STREAM_ID,  options.stream_id);
-
-#endif
+		if(options.end_pls_code> options.start_pls_code)
+			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
+		auto stream_id = options.pls_codes.size() >0 ?
+			(options.stream_id < 0  ? -1 : (options.stream_id&0xff) | options.pls_codes[0]) :
+			(options.stream_id < 0  ? -1 : (options.stream_id&0xff));
+		cmdseq.add(DTV_STREAM_ID,  stream_id);
+	}
 
 	return cmdseq.tune(fefd);
 }

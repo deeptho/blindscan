@@ -560,7 +560,8 @@ enum fe_interleaving {
 
 #define DTV_STREAM_ID		42
 #define DTV_ISDBS_TS_ID_LEGACY	DTV_STREAM_ID
-#define DTV_DVBT2_PLP_ID_LEGACY	43
+#define DTV_DVBT2_PLP_ID_LEGACY	DTV_STREAM_ID
+#define DTV_MODCODE		43
 
 #define DTV_ENUM_DELSYS		44
 
@@ -841,7 +842,8 @@ enum atscmh_rs_code_mode {
 };
 
 #define NO_STREAM_ID_FILTER	(~0U)
-#define LNA_AUTO                (~0U)
+#define LNA_AUTO            (~0U)
+#define MODCODE_ALL         (~0U)
 
 /**
  * enum fecap_scale_params - scale types for the quality parameters.
@@ -931,6 +933,13 @@ enum dtv_fe_constellation_method {
 	CONSTELLATION_METHOD_DEFAULT,
 };
 
+struct spectral_peak_t {
+	__s32 freq; //frequency of current peak
+	__s32 symbol_rate; //estimated symbolrate of current peak
+	__s32 snr;
+	__s32 level;
+};
+
 
 /**
  * struct dtv_fe_spectrum - decriptor for a spectrum scan buffer
@@ -949,8 +958,9 @@ enum dtv_fe_constellation_method {
 struct dtv_fe_spectrum {
 	__u32 *freq;
 	__s32 *rf_level;
-	__s32 *rf_band;
+	__s32 *candidate_frequencies;
 	__u32 num_freq;
+	__u32 num_candidates;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
 	__u8 spectrum_method;
 };
@@ -1221,3 +1231,8 @@ struct usbi2c_access
 
 #define FE_REGI2C_READ    _IOR('o', 94, struct usbi2c_access)
 #define FE_REGI2C_WRITE   _IOW('o', 95, struct usbi2c_access)
+
+#define FE_EEPROM_READ    _IOR('o', 96, struct eeprom_info)
+#define FE_EEPROM_WRITE   _IOW('o', 97, struct eeprom_info)
+
+#define FE_READ_TEMP	  _IOR('o', 98, __s16)

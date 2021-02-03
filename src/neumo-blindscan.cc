@@ -17,7 +17,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-
+#include <cassert>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -44,7 +44,6 @@
 #include <pthread.h>
 #include <algorithm>
 #include <iomanip>
-#include <cassert>
 #include <iostream>
 #include<regex>
 #include "CLI/CLI.hpp"
@@ -341,7 +340,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	struct dtv_property p[] = {
 		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
 		{ .cmd = DTV_FREQUENCY },
-		{ .cmd = DTV_VOLTAGE },         // 0 - 13V H, 1 - 18V V, 2 - Voltage OFF
+		{ .cmd = DTV_VOLTAGE },         // 0 - 13V Vertical, 1 - 18V Horizontal, 2 - Voltage OFF
 		{ .cmd = DTV_SYMBOL_RATE },
 		{ .cmd = DTV_STAT_SIGNAL_STRENGTH	},
 		{ .cmd = DTV_STAT_CNR	},
@@ -528,6 +527,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 uint32_t freq[65536*4];
 int32_t rf_level[65536*4];
 int32_t rf_band[65536*4];
+int32_t candidate_frequencies[65536*4];
 
 void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int lo_frequency)
 {
@@ -543,7 +543,8 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 	spectrum.num_freq=65536;
 	spectrum.freq = & freq[0];
 	spectrum.rf_level = & rf_level[0];
-	spectrum.rf_band = & rf_band[0];
+	spectrum.candidate_frequencies = & candidate_frequencies[0];
+	spectrum.num_candidates = spectrum.num_freq;
 	cmdseq.props[0].u.spectrum = spectrum;
 	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
 		printf("ioctl failed: %s\n", strerror(errno));
@@ -551,17 +552,30 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 		return;
 	}
 	spectrum = cmdseq.props[0].u.spectrum;
-	int i=0;
+
+
 
 	if(spectrum.num_freq <=0) {
 		printf("kernel returned spectrum with 0 samples\n");
 		return;
 	}
+
+	auto next_idx = 0;
+	auto next_freq_tick = (next_idx < spectrum.num_candidates) ? spectrum.candidate_frequencies[next_idx] : -1;
+
 	if(!*fpout)
 		*fpout =fopen(fname, "w");
 	for(int i=0; i<spectrum.num_freq;++i) {
+		auto tick = (spectrum.freq[i]== next_freq_tick);
+		if(tick)  {
+			if(++next_idx >= spectrum.num_candidates)
+				next_freq_tick = -1;
+			else
+				next_freq_tick = spectrum.candidate_frequencies[next_idx];
+		}
+
 		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
-		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], spectrum.rf_band[i]);
+		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], tick);
 	}
 }
 
@@ -876,9 +890,22 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 
 	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
 	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
+#ifdef SET_VOLTAGE_TONE_DURING_TUNE
+	/*Having this set through this api saves two additional ioctl calls (voltage and tone)
+		but we need to set voltage anyway to a value different from voltage_off to make diseqc
+		work. Also, we may need a pause after diseqc before actual tuning starts. The only way
+		to currently achieve this is to make two system calls.
 
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
+		So the benefit may be  small.
+
+		Unfortunately, the older drivers also don't set the  dtv_property_cache when setting tone and voltage
+		througg FE_SET_VOLTAGE and FE_SET_TONE ioctl\
+	 */
+	bool band_is_low = start_freq_ < lnb_slof ? true: false;
 	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
+	cmdseq.add(DTV_TONE,  band_is_low ? SEC_TONE_OFF: SEC_TONE_ON);
+#endif
+	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
 	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
 	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
 
@@ -984,9 +1011,13 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 	auto lo_frequency = get_lo_frequency(frequency_);
 	auto frequency= (long)(frequency_-(signed)lo_frequency);
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
+#ifdef SET_VOLTAGE_TONE_DURING_TUNE
+	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
+	bool band_is_low = start_freq_ < lnb_slof ? true: false;
+	cmdseq.add(DTV_TONE,  band_is_low ? SEC_TONE_OFF: SEC_TONE_ON);
+#endif
 	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 	cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
 	cmdseq.add(DTV_SYMBOL_RATE,  options.max_symbol_rate*1000); //controls tuner bandwidth
 	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
@@ -1163,6 +1194,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 /*
 	turn off tone to not interfere with diseqc
 */
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 	bool tone_off_called=false;
 	auto tone_off = [&]() {
 		int err;
@@ -1175,7 +1207,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 		}
 		return 1;
 	};
-
+#endif
 	int ret;
 	bool must_pause= false; //do we need a long pause before the next diseqc command?
 	int diseqc_num_repeats = 2;
@@ -1186,9 +1218,10 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 			case 'M': {
 				if(! mini_diseqc_change_needed())
 					continue;
-
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 				if(tone_off()<0)
 					return -1;
+#endif
 				msleep(must_pause ? 100: 15);
 				/*
 					tone burst commands deal with simpler equipment.
@@ -1207,10 +1240,11 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				if(! diseqc10_change_needed())
 					continue;
 				//committed
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 					if(tone_off()<0)
 						return -1;
+#endif
 					msleep(must_pause ? 100: 15);
-					assert(options.pol==1 || options.pol ==2);
 					int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
 					ret = send_diseqc_message(fefd, 'C', options.committed*4, extra,  repeated);
 					if(ret<0) {
@@ -1223,11 +1257,13 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				if( options.uncommitted<0)
 					continue;
 				//uncommitted
+
 				if(! diseqc11_change_needed())
 					continue;
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 				if(tone_off()<0)
 					return -1;
-
+#endif
 				msleep(must_pause ? 100: 15);
 				ret=send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
 				if(ret<0) {
@@ -1246,8 +1282,11 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				return ret;
 		}
 	}
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 	return tone_off_called ? 1 : 0;
-
+#else
+	return 0;
+#endif
 }
 
 
@@ -1262,7 +1301,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 	*/
 	int ret;
 
-#ifdef OLD_DISEQC
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 	//this ioctl is also performed internally in modern kernels; save some time
 
 	/*
@@ -1284,15 +1323,14 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 
 	bool band_is_high = hi_lo(frequency);
 
-#ifdef OLD_DISEQC
+
 	//this ioctl is also performed internally in modern kernels; save some time
 
 	//Note: the following is a NOOP in case no diseqc needs to be sent
 	ret= diseqc(fefd, pol_is_v, band_is_high);
 	if(ret<0)
 		return ret;
-#endif
-
+#ifndef SET_VOLTAGE_TONE_DURING_TUNE
 	bool tone_turned_off = ret>0;
 
 	/*select the proper lnb band
@@ -1306,6 +1344,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 			return -1;
 		}
 	}
+	#endif
 	return 0;
 }
 
