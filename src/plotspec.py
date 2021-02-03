@@ -15,23 +15,34 @@ def load_blindscan(fname):
                                'formats': ('S1', 'i8', 'S1', 'i8', 'S1', 'S1')})
     return x['frequency']
 
+def load_blindscan_old(fname):
+    x=np.loadtxt(fname, dtype={'names': ('frequency', 'bandwidth'),
+                               'formats': ('i8', 'i8')})
+    return x['frequency']
+
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
     fig.canvas.set_window_title(fname)
     have_blindscan = False
-    try:
-        x=np.loadtxt(fname)
-        f=x[:,0]
-        spec = x[:,1]
-        ax.plot(f, spec, label="spectrum (dB)")
-
-        tps=load_blindscan(fname.replace('spectrum', 'blindscan'))
-        f1= tps/1000
-        spec1 = tps*0+-70000
-        ax.plot( f1, spec1,  '+', label="Found TPs")
-        have_blindscan = True
-    except:
-        pass
+    x=np.loadtxt(fname)
+    print (f"Loading {fname}")
+    ret=dict()
+    for method in [load_blindscan, load_blindscan_old]:
+        try:
+            #x[:,0] = np.array(range(x.shape[0]))
+            f=x[:,0]
+            spec = x[:,1]/1000.
+            ax.plot(f, spec, label="spectrum (dB)")
+            ret[fname] = spec
+            tps=method(fname.replace('spectrum', 'blindscan'))
+            f1= tps/1000
+            spec1 = tps*0+-70
+            ax.plot( f1, spec1,  '+', label="Found TPs")
+            have_blindscan = True
+        except:
+            pass
+        if have_blindscan:
+            break
     if have_blindscan:
         title='Blindscan result - {fname}'
     else:
@@ -40,8 +51,7 @@ def plotspec(fname, pol, lim=None):
     plt.legend()
     if lim is not None:
         ax.set_xlim(lim)
-    return
-
+    return ret
 
 
 rx = re.compile('(spectrum)(_a[0-9]+_)*([HV]).dat$')
@@ -61,9 +71,10 @@ d=os.getcwd()
 
 files=find_data(d)
 
-
+ret =dict()
 for file, pol in files:
-    plotspec(file, pol=pol)
+    ret = {**ret , **plotspec(file, pol=pol)}
+
 
 
 if __name__ == "__main__":
