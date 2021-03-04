@@ -958,7 +958,7 @@ struct spectral_peak_t {
 struct dtv_fe_spectrum {
 	__u32 *freq;
 	__s32 *rf_level;
-	__s32 *candidate_frequencies;
+	struct spectral_peak_t *candidates; //frequencies which were tried for locking are returned in candidate_frequencies[num_candidates]
 	__u32 num_freq;
 	__u32 num_candidates;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE

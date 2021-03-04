@@ -527,7 +527,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 uint32_t freq[65536*4];
 int32_t rf_level[65536*4];
 int32_t rf_band[65536*4];
-int32_t candidate_frequencies[65536*4];
+struct spectral_peak_t candidates[512];
 
 void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int lo_frequency)
 {
@@ -543,7 +543,7 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 	spectrum.num_freq=65536;
 	spectrum.freq = & freq[0];
 	spectrum.rf_level = & rf_level[0];
-	spectrum.candidate_frequencies = & candidate_frequencies[0];
+	spectrum.candidates = & candidates[0];
 	spectrum.num_candidates = spectrum.num_freq;
 	cmdseq.props[0].u.spectrum = spectrum;
 	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
@@ -561,7 +561,7 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 	}
 
 	auto next_idx = 0;
-	auto next_freq_tick = (next_idx < spectrum.num_candidates) ? spectrum.candidate_frequencies[next_idx] : -1;
+	auto next_freq_tick = (next_idx < spectrum.num_candidates) ? spectrum.candidates[next_idx].freq : -1;
 
 	if(!*fpout)
 		*fpout =fopen(fname, "w");
@@ -571,7 +571,7 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 			if(++next_idx >= spectrum.num_candidates)
 				next_freq_tick = -1;
 			else
-				next_freq_tick = spectrum.candidate_frequencies[next_idx];
+				next_freq_tick = spectrum.candidates[next_idx].freq;
 		}
 
 		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
