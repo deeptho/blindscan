@@ -465,8 +465,11 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
-	int num_isi = cmdseq.props[i].u.buffer.len;
-	uint8_t* isi_list = cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
+	assert(cmdseq.props[i].u.buffer.len == 32);
+	uint32_t* isi_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
+
+	assert(cmdseq.props[i].u.buffer.len == 32);
+	uint32_t* matype_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
 
 	assert(i== cmdseq.num);
 //int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
@@ -503,13 +506,36 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 
 	printf("Stream=%-5d pls_mode=%2d:%5d ", dtv_stream_id_prop&0xff,
 				 (dtv_stream_id_prop>>26) & 0x3, (dtv_stream_id_prop>>8) & 0x3FFFF);
-	if(num_isi>0)  {
-		printf("ISI list:");
-		for(int i=0; i< num_isi;++i) {
-			printf(" %d", isi_list[i]);
+	int num_isi=0;
+	for(int i=0; i< 256; ++i) {
+		int j = i/32;
+		auto mask = ((uint32_t)1)<< (i%32);
+		if(isi_bitset[j]& mask) {
+			if(num_isi==0)
+				printf("ISI list:");
+			printf(" %d", i);
+			num_isi++;
 		}
+	}
+	if(num_isi>0)  {
 		printf("\n");
 	}
+
+	int num_matype=0;
+	for(int i=0; i< 256; ++i) {
+		int j = i/32;
+		auto mask = ((uint32_t)1)<< (i%32);
+		if(matype_bitset[j]& mask) {
+			if(num_matype==0)
+				printf("MATYPE list:");
+			printf(" %d", i);
+			num_matype++;
+		}
+	}
+	if(num_matype>0)  {
+		printf("\n");
+	}
+
 	for(int i=0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_DECIBEL)
 			printf("SIG=%4.2lfdB ", dtv_stat_signal_strength_prop.stat[i].svalue/1000.);
