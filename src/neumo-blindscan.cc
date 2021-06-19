@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2020 deeptho@gmail.com
+ * Neumo dvb (C) 2020-2021 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -67,13 +67,20 @@ static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
 }
 
 
-static constexpr int lnb_slof = 11700*1000UL;
-static constexpr int lnb_lof_low = 9750*1000UL;
-static constexpr int lnb_lof_high = 10600*1000UL;
+static constexpr int lnb_universal_slof = 11700*1000UL;
+static constexpr int lnb_universal_lof_low = 9750*1000UL;
+static constexpr int lnb_universal_lof_high = 10600*1000UL;
+
+static constexpr int lnb_c_lof = 5150*1000UL;
 
 enum blindscan_method_t {
 	SCAN_EXHAUSTIVE = 1, // old method: steps to the frequency bands and starts a blindscan tune
 	SCAN_FREQ_PEAKS, //scans for rising and falling frequency peaks and launches blindscan there
+};
+
+enum lnb_type_t {
+	UNIVERSAL_LNB = 1,
+	C_LNB,
 };
 
 enum class command_t : int {
@@ -87,11 +94,14 @@ enum class command_t : int {
 struct options_t {
 	command_t command{command_t::SPECTRUM};
 	blindscan_method_t blindscan_method{SCAN_FREQ_PEAKS};
+	lnb_type_t lnb_type{UNIVERSAL_LNB};
 	dtv_fe_spectrum_method spectrum_method{SPECTRUM_METHOD_SWEEP};
-	int start_freq = 10700000; //in kHz
 	int freq = 10700000; //in kHz
-	int end_freq = 12750000; //in kHz
+
+	int start_freq = -1; //default 10700000; //in kHz
+	int end_freq = -1; ///default 12750000; //in kHz
 	int step_freq = 6000; //in kHz
+
 	int search_range{10000}; //in kHz
 	int max_symbol_rate{45000}; //in kHz
 	int spectral_resolution{2000}; //in kHz
@@ -128,21 +138,30 @@ options_t options;
 
 
 uint32_t get_lo_frequency(uint32_t frequency)		{
-	if (frequency < lnb_slof) {
-		return  lnb_lof_low;
-	} else {
-		return lnb_lof_high;
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (frequency < lnb_universal_slof) {
+			return  lnb_universal_lof_low;
+		} else {
+			return lnb_universal_lof_high;
+	}
+		break;
+
+	case C_LNB:
+		return lnb_c_lof;
+		break;
 	}
 }
 
 
 void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 {
-	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,5})");
+	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
 	for(auto m: pls_entries) {
 		int mode;
 		int code;
+		bool inited=false;
 		if (std::regex_match(m, base_match, base_regex)) {
 			// The first sub_match is the whole string; the next
 			// sub_match is the first parenthesized expression.
@@ -166,13 +185,78 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 				if(sscanf(code_.c_str(), "%d", &code)!=1)
 					throw std::runtime_error("Invalid PLS code");
 			}
+			if(!inited) {
+				pls_codes.clear();
+				inited=true;
+			}
 			pls_codes.push_back(make_code(mode, code));
 		}
 		printf(" %d:%d", mode, code);
 	}
 	printf("\n");
-
 }
+
+std::map<std::string, fe_delivery_system>
+delsys_map{
+	{"DVBC",	 SYS_DVBC_ANNEX_A},
+	{"DVBT",	 SYS_DVBT},
+	{"DSS",	 SYS_DSS},
+	{"DVBS",	 SYS_DVBS},
+	{"DVBS2",	 SYS_DVBS2},
+	{"DVBH",	 SYS_DVBH},
+	{"ISDBT",	 SYS_ISDBT},
+	{"ISDBS",	 SYS_ISDBS},
+	{"ISDBC",	 SYS_ISDBC},
+	{"ATSC",	 SYS_ATSC},
+	{"ATSCMH",	 SYS_ATSCMH},
+	{"DTMB",	 SYS_DTMB},
+	{"CMMB",	 SYS_CMMB},
+	{"DAB",	 SYS_DAB},
+	{"DVBT2",	 SYS_DVBT2},
+	{"TURBO",	 SYS_TURBO},
+	{"DVBC2",	 SYS_DVBC2},
+	{"DVBS2X",	 SYS_DVBS2X},
+	{"DCII",	 SYS_DCII},
+	{"AUTO",	 SYS_AUTO}
+};
+
+
+std::map<std::string, fe_modulation>
+modulation_map{
+	{"QPSK", QPSK},
+	{"QAM_16", QAM_16},
+	{"QAM_32", QAM_32},
+	{"QAM_64", QAM_64},
+	{"QAM_128", QAM_128},
+	{"QAM_256", QAM_256},
+	{"QAM_AUTO", QAM_AUTO},
+	{"VSB_8", VSB_8},
+	{"VSB_16", VSB_16},
+	{"PSK_8", PSK_8},
+	{"APSK_16", APSK_16},
+	{"APSK_32", APSK_32},
+	{"DQPSK", DQPSK},
+	{"QAM_4_NR", QAM_4_NR},
+	{"C_QPSK", C_QPSK},
+	{"I_QPSK", I_QPSK},
+	{"Q_QPSK", Q_QPSK},
+	{"C_OQPSK", C_OQPSK},
+	{"QAM_512", QAM_512},
+	{"QAM_1024", QAM_1024},
+	{"QAM_4096", QAM_4096},
+	{"APSK_64", APSK_64},
+	{"APSK_128", APSK_128},
+	{"APSK_256", APSK_256},
+	{"APSK_8L", APSK_8L},
+	{"APSK_16L", APSK_16L},
+	{"APSK_32L", APSK_32L},
+	{"APSK_64L", APSK_64L},
+	{"APSK_128L", APSK_128L},
+	{"APSK_256L", APSK_256L},
+	{"APSK_1024", APSK_1024}
+};
+
+
 int options_t::parse_options(int argc, char**argv)
 {
 
@@ -189,6 +273,8 @@ int options_t::parse_options(int argc, char**argv)
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
 	std::map<std::string, blindscan_method_t>
 		blindscan_method_map{{"exhaustive", SCAN_EXHAUSTIVE}, {"spectral-peaks", SCAN_FREQ_PEAKS}};
+	std::map<std::string, lnb_type_t>
+		lnb_type_map{{"universal", UNIVERSAL_LNB}, {"C", C_LNB}};
 	std::vector<std::string> pls_entries;
 
 	app.add_option("-c,--command", command, "Command to execute", true)
@@ -196,6 +282,9 @@ int options_t::parse_options(int argc, char**argv)
 
 	app.add_option("--blindscan-method", blindscan_method, "Blindscan method", true)
 		->transform(CLI::CheckedTransformer(blindscan_method_map, CLI::ignore_case));
+
+	app.add_option("--lnb-type,L", lnb_type, "LNB Type", true)
+		->transform(CLI::CheckedTransformer(lnb_type_map, CLI::ignore_case));
 
 	app.add_option("--spectrum-method", spectrum_method, "Spectrum method", true)
 		->transform(CLI::CheckedTransformer(spectrum_method_map, CLI::ignore_case));
@@ -249,8 +338,25 @@ int options_t::parse_options(int argc, char**argv)
 
 	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
 
+	switch(options.lnb_type)
+	{
+	case C_LNB:
+		if(start_freq<0)
+			start_freq = 3400000; //in kHz;
+		if(end_freq<0)
+			end_freq = 4200000; //in kHz;
+		break;
+	case UNIVERSAL_LNB:
+		if(start_freq<0)
+			start_freq = 10700000; //in kHz;
+		if(end_freq<0)
+			end_freq = 12750000; //in kHz;
+		break;
+	};
+
 	if(options.end_freq < options.start_freq)
 		options.end_freq = options.start_freq+1; //scan single freq
+
 	return 0;
 }
 
@@ -561,22 +667,26 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 	}
 
 	auto next_idx = 0;
-	auto next_freq_tick = (next_idx < spectrum.num_candidates) ? spectrum.candidates[next_idx].freq : -1;
+	auto candidate_freq = (next_idx < spectrum.num_candidates) ? spectrum.candidates[next_idx].freq : -1;
+	auto candidate_symbol_rate = (next_idx < spectrum.num_candidates) ? spectrum.candidates[next_idx].symbol_rate : 0;
 
 	if(!*fpout)
 		*fpout =fopen(fname, "w");
 	for(int i=0; i<spectrum.num_freq;++i) {
-		auto tick = (spectrum.freq[i]== next_freq_tick);
-		if(tick)  {
+		auto candidate = (spectrum.freq[i] == candidate_freq);
+		if(candidate)  {
 			if(++next_idx >= spectrum.num_candidates)
-				next_freq_tick = -1;
-			else
-				next_freq_tick = spectrum.candidates[next_idx].freq;
+				candidate_freq = -1;
+			else {
+				candidate_freq = spectrum.candidates[next_idx].freq;
+				candidate_symbol_rate = spectrum.candidates[next_idx].symbol_rate;
+			}
 		}
 
 		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
-		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], tick);
+		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], candidate? candidate_symbol_rate : 0);
 	}
+	fflush(*fpout);
 }
 
 
@@ -901,7 +1011,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 		Unfortunately, the older drivers also don't set the  dtv_property_cache when setting tone and voltage
 		througg FE_SET_VOLTAGE and FE_SET_TONE ioctl\
 	 */
-	bool band_is_low = start_freq_ < lnb_slof ? true: false;
+	bool band_is_low = start_freq_ < lnb_universal_slof ? true: false;
 	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 	cmdseq.add(DTV_TONE,  band_is_low ? SEC_TONE_OFF: SEC_TONE_ON);
 #endif
@@ -1013,7 +1123,7 @@ int tune_it(int fefd, int frequency_, bool pol_is_v)
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
 	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
-	bool band_is_low = start_freq_ < lnb_slof ? true: false;
+	bool band_is_low = start_freq_ < lnb_universal_slof ? true: false;
 	cmdseq.add(DTV_TONE,  band_is_low ? SEC_TONE_OFF: SEC_TONE_ON);
 #endif
 	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
@@ -1096,7 +1206,7 @@ int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned
 
 int hi_lo(unsigned int frequency)
 {
-	return (frequency >= lnb_slof);
+	return (frequency >= lnb_universal_slof);
 
 }
 

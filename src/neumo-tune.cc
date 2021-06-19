@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2020 deeptho@gmail.com
+ * Neumo dvb (C) 2020-2021 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-
+#include <cassert>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -44,7 +44,6 @@
 #include <pthread.h>
 #include <algorithm>
 #include <iomanip>
-#include <cassert>
 #include <iostream>
 #include<regex>
 #include "CLI/CLI.hpp"
@@ -68,13 +67,20 @@ static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
 }
 
 
-static constexpr int lnb_slof = 11700*1000UL;
-static constexpr int lnb_lof_low = 9750*1000UL;
-static constexpr int lnb_lof_high = 10600*1000UL;
+static constexpr int lnb_universal_slof = 11700*1000UL;
+static constexpr int lnb_universal_lof_low = 9750*1000UL;
+static constexpr int lnb_universal_lof_high = 10600*1000UL;
+
+static constexpr int lnb_c_lof = 5150*1000UL;
 
 enum blindscan_method_t {
 	SCAN_EXHAUSTIVE = 1, // old method: steps to the frequency bands and starts a blindscan tune
 	SCAN_FREQ_PEAKS, //scans for rising and falling frequency peaks and launches blindscan there
+};
+
+enum lnb_type_t {
+	UNIVERSAL_LNB = 1,
+	C_LNB,
 };
 
 enum class command_t : int {
@@ -93,13 +99,15 @@ enum class algo_t : int {
 struct options_t {
 	command_t command{command_t::TUNE};
 	algo_t algo{algo_t::BLIND};
+	lnb_type_t lnb_type{UNIVERSAL_LNB};
 	int search_range{10000}; //in kHz
-	int freq;
+	int freq{-1};
 	int symbol_rate{-1}; //in kHz
 	fe_modulation modulation{PSK_8};
 	fe_delivery_system delivery_system{SYS_DVBS2};
 	int pol =3;
-	std::string filename_pattern{"/tmp/%s%c.dat"};
+
+	std::string filename_pattern{"/tmp/%s_a%d_%c.dat"};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		//In use on 5.0W
@@ -129,10 +137,18 @@ options_t options;
 
 
 uint32_t get_lo_frequency(uint32_t frequency)		{
-	if (frequency < lnb_slof) {
-		return  lnb_lof_low;
-	} else {
-		return lnb_lof_high;
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (frequency < lnb_universal_slof) {
+			return  lnb_universal_lof_low;
+		} else {
+			return lnb_universal_lof_high;
+	}
+		break;
+
+	case C_LNB:
+		return lnb_c_lof;
+		break;
 	}
 }
 
@@ -296,6 +312,8 @@ int options_t::parse_options(int argc, char**argv)
 		app.exit(e);
 		return -1;
 	}
+	if(options.freq < 4800000)
+		options.lnb_type = C_LNB;
 	parse_pls(pls_entries);
 	printf("adapter=%d\n", adapter_no);
 	printf("frontend=%d\n", frontend_no);
@@ -412,6 +430,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 		{ .cmd = DTV_STREAM_ID },
 		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
 		{ .cmd = DTV_ISI_LIST },
+		{ .cmd = DTV_MATYPE_LIST },
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
 	struct dtv_properties cmdseq = {
@@ -1006,7 +1025,7 @@ int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned
 
 int hi_lo(unsigned int frequency)
 {
-	return (frequency >= lnb_slof);
+	return (frequency >= lnb_universal_slof);
 
 }
 
