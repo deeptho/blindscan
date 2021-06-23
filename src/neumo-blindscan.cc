@@ -918,11 +918,8 @@ struct cmdseq_t {
 		auto* tvp = &cmdseq.props[cmdseq.num];
 		memset(tvp, 0, sizeof(cmdseq.props[cmdseq.num]));
 		tvp->cmd = cmd;
-		num_codes =std::min(num_codes,  (int)(sizeof(tvp->u.buffer.data)/sizeof(uint32_t)));
-		//printf("adding %d scramble codes\n", num_codes);
-		for(int i=0; i< num_codes; ++i)
-			memcpy(&tvp->u.buffer.data[i*sizeof(uint32_t)], &codes[i], sizeof(codes[0]));
-		tvp->u.buffer.len = num_codes*sizeof(uint32_t);
+		tvp->u.pls_search_codes.num_codes = num_codes;
+		tvp->u.pls_search_codes.codes = codes;
 		cmdseq.num++;
 	};
 

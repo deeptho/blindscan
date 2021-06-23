@@ -947,6 +947,20 @@ struct spectral_peak_t {
 
 
 /**
+ * struct dtv_pls_search_codes
+ * This is passed as an input to FE_GET_PROPERTY
+ * The caller should initialise the fields as followed
+ * @num_codes: numver of elements prvided in codes
+ * @codes: data array provided by caller, codes will be read from this
+ *
+ */
+struct dtv_pls_search_list {
+	int num_codes;
+	__u32 *codes;
+};
+
+
+/**
  * struct dtv_fe_spectrum - decriptor for a spectrum scan buffer
  * This is passed as an input to FE_GET_PROPERTY
  * The caller should initialise the fields as followed
@@ -1026,6 +1040,7 @@ struct dtv_property {
 		struct dtv_fe_stats st;
 		struct dtv_fe_spectrum spectrum;
 		struct dtv_fe_constellation constellation;
+		struct dtv_pls_search_list pls_search_codes;
 		struct {
 			__u8 data[32];
 			__u32 len;
