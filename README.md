@@ -5,11 +5,8 @@ stv091x based cards (tbs5927) and si2183 based cards (tbs6504).
 
 The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
-
 Always use the latest versions from both repositories, or make sure that the versions match
-(e.g. the same tag or the same branch)
-
-Installation instructtions in Ubuntu can be found in [INSTALL.md](INSTALL.md)
+(e.g. the same tag or the same branch). Installation instructtions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
 
 
 # Spectrum Scan
