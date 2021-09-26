@@ -459,7 +459,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 		{ .cmd = DTV_STREAM_ID },
 		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
 		{ .cmd = DTV_ISI_LIST },
-		{ .cmd = DTV_MATYPE_LIST },
+		{ .cmd = DTV_MATYPE},
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
 	struct dtv_properties cmdseq = {

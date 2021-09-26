@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2020-2021 deeptho@gmail.com
+ * Neumo dvb (C) 2019-2021 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,65 +17,63 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-#include <cassert>
-#include <stdio.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <sys/time.h>
-#include <sys/poll.h>
-#include <sys/epoll.h>
-#include <sys/stat.h>
-#include <stdint.h>
-#include <resolv.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <signal.h>
-#include <values.h>
-#include <string.h>
-#include <syslog.h>
-#include <getopt.h>
-#include <errno.h>
-#include <time.h>
-#include <stdarg.h>
-#include <linux/dvb/version.h>
-#include <sys/mman.h>
-#include <sys/ioctl.h>
-#include <linux/limits.h>
-#include <pthread.h>
-#include <algorithm>
-#include <iomanip>
-#include <iostream>
-#include<regex>
 #include "CLI/CLI.hpp"
 #include "neumofrontend.h"
+#include <algorithm>
+#include <cassert>
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <iomanip>
+#include <iostream>
+#include <linux/dvb/version.h>
+#include <linux/limits.h>
+#include <pthread.h>
+#include <regex>
+#include <resolv.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/poll.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <syslog.h>
+#include <time.h>
+#include <unistd.h>
+#include <values.h>
 
+
+uint32_t freq[65536 * 4];
+int32_t rf_level[65536 * 4];
+int32_t candidate_frequencies[65536 * 4];
+dtv_fe_constellation_sample samples[65536];
 
 
 int tune_it(int fefd, int frequency_, bool pol_is_v);
 int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v);
 int tune(int fefd, int frequency, bool pol_is_v);
 
-int driver_start_constellation(int fefd, int num_samples, int constel_select,
-															 dtv_fe_constellation_method method =CONSTELLATION_METHOD_DEFAULT);
 
-
-
-
-
-static constexpr int	make_code (int pls_mode, int pls_code, int timeout=0) {
-	return (timeout&0xff) | ((pls_code & 0x3FFFF)<<8) | (((pls_mode) & 0x3)<<26);
+static constexpr int make_code(int pls_mode, int pls_code, int timeout = 0) {
+	return (timeout & 0xff) | ((pls_code & 0x3FFFF) << 8) | (((pls_mode)&0x3) << 26);
 }
 
+static constexpr int lnb_universal_slof = 11700 * 1000UL;
+static constexpr int lnb_universal_lof_low = 9750 * 1000UL;
+static constexpr int lnb_universal_lof_high = 10600 * 1000UL;
 
-static constexpr int lnb_universal_slof = 11700*1000UL;
-static constexpr int lnb_universal_lof_low = 9750*1000UL;
-static constexpr int lnb_universal_lof_high = 10600*1000UL;
-
-static constexpr int lnb_c_lof = 5150*1000UL;
+static constexpr int lnb_c_lof = 5150 * 1000UL;
 
 enum blindscan_method_t {
 	SCAN_EXHAUSTIVE = 1, // old method: steps to the frequency bands and starts a blindscan tune
-	SCAN_FREQ_PEAKS, //scans for rising and falling frequency peaks and launches blindscan there
+	SCAN_FREQ_PEAKS,		 // scans for rising and falling frequency peaks and launches blindscan there
 };
 
 enum lnb_type_t {
@@ -100,14 +98,14 @@ struct options_t {
 	command_t command{command_t::TUNE};
 	algo_t algo{algo_t::BLIND};
 	lnb_type_t lnb_type{UNIVERSAL_LNB};
-	int search_range{10000}; //in kHz
+	int search_range{10000}; // in kHz
 	int freq{-1};
-	int symbol_rate{-1}; //in kHz
+	int symbol_rate{-1}; // in kHz
 	fe_modulation modulation{PSK_8};
 	fe_delivery_system delivery_system{SYS_DVBS2};
-	int pol =3;
+	int pol = 3;
 
-	std::string filename_pattern{"/tmp/%s_a%d_%c.dat"};
+	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		//In use on 5.0W
@@ -119,6 +117,7 @@ struct options_t {
 		};
 	int start_pls_code{-1};
 	int end_pls_code{-1};
+	int pls_search_timeout{25}; // in ms
 	int adapter_no{0};
 	int frontend_no{0};
 	std::string diseqc{"UC"};
@@ -129,21 +128,19 @@ struct options_t {
 
 	options_t() = default;
 	void parse_pls(const std::vector<std::string>& pls_entries);
-	int parse_options(int argc, char**argv);
+	int parse_options(int argc, char** argv);
 };
 
 options_t options;
 
-
-
-uint32_t get_lo_frequency(uint32_t frequency)		{
-	switch(options.lnb_type) {
+uint32_t get_lo_frequency(uint32_t frequency) {
+	switch (options.lnb_type) {
 	case UNIVERSAL_LNB:
 		if (frequency < lnb_universal_slof) {
-			return  lnb_universal_lof_low;
+			return lnb_universal_lof_low;
 		} else {
 			return lnb_universal_lof_high;
-	}
+		}
 		break;
 
 	case C_LNB:
@@ -152,27 +149,25 @@ uint32_t get_lo_frequency(uint32_t frequency)		{
 	}
 }
 
-
-void options_t::parse_pls(const std::vector<std::string>& pls_entries)
-{
+void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
-	for(auto m: pls_entries) {
+	for (auto m : pls_entries) {
 		int mode;
 		int code;
-		bool inited=false;
+		bool inited = false;
 		if (std::regex_match(m, base_match, base_regex)) {
 			// The first sub_match is the whole string; the next
 			// sub_match is the first parenthesized expression.
 			if (base_match.size() >= 2) {
 				std::ssub_match base_sub_match = base_match[1];
 				auto mode_ = base_sub_match.str();
-				if(!mode_.compare("ROOT"))
-					mode=0;
-				else if(!mode_.compare("GOLD"))
-					mode=1;
-				else if(!mode_.compare("COMBO"))
-					mode=2;
+				if (!mode_.compare("ROOT"))
+					mode = 0;
+				else if (!mode_.compare("GOLD"))
+					mode = 1;
+				else if (!mode_.compare("COMBO"))
+					mode = 2;
 				else {
 					printf("mode=/%s/\n", mode_.c_str());
 					throw std::runtime_error("Invalid PLS mode");
@@ -181,12 +176,12 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 			if (base_match.size() >= 3) {
 				std::ssub_match base_sub_match = base_match[2];
 				auto code_ = base_sub_match.str();
-				if(sscanf(code_.c_str(), "%d", &code)!=1)
+				if (sscanf(code_.c_str(), "%d", &code) != 1)
 					throw std::runtime_error("Invalid PLS code");
 			}
-			if(!inited) {
+			if (!inited) {
 				pls_codes.clear();
-				inited=true;
+				inited = true;
 			}
 			pls_codes.push_back(make_code(mode, code));
 		}
@@ -255,10 +250,7 @@ modulation_map{
 	{"APSK_1024", APSK_1024}
 };
 
-int options_t::parse_options(int argc, char**argv)
-{
-
-	//Level level{Level::Low};
+int options_t::parse_options(int argc, char** argv) {
 	CLI::App app{"DVB tuning program"};
 	std::map<std::string, command_t>
 		command_map{{"tune", command_t::TUNE},
@@ -284,7 +276,7 @@ int options_t::parse_options(int argc, char**argv)
 
 	app.add_option("-S,--symbol-rate", symbol_rate, "Symbolrate (kHz)", true);
 	app.add_option("-m,--modulation", modulation, "modulation", true)
-				->transform(CLI::CheckedTransformer(modulation_map, CLI::ignore_case));
+		->transform(CLI::CheckedTransformer(modulation_map, CLI::ignore_case));
 	app.add_option("--delsys", delivery_system, "Delivery syste,", true)
 		->transform(CLI::CheckedTransformer(delsys_map, CLI::ignore_case));
 
@@ -297,22 +289,26 @@ int options_t::parse_options(int argc, char**argv)
 	app.add_option("-f,--frequency", freq, "Frequency to tune for getting IQ samples", true);
 	app.add_option("-s,--stream-id", stream_id, "stream_id to select", true);
 
-	app.add_option("--pls-code", pls_entries, "PLS mode (ROOT, GOLD, COMBO) and code (number) to scan, separated by +", true);
+	app.add_option("--pls-code", pls_entries, "PLS mode (ROOT, GOLD, COMBO) and code (number) to scan, separated by +",
+								 true);
 	app.add_option("--start-pls-code", start_pls_code, "Start of PLS code range to start (mode=ROOT!)", true);
 	app.add_option("--end-pls-code", end_pls_code, "End of PLS code range to start (mode=ROOT!)", true);
+	app.add_option("-T,--pls-search-timeout", pls_search_timeout, "Search range timeou", true);
 
-	app.add_option("-d,--diseqc", diseqc, "Diseqc command string (C: send committed command; "
-								 "U: send uncommitted command", true);
-	app.add_option("-U,--uncommitted", uncommitted,  "Uncommitted switch number (lowest is 0)", true);
-	app.add_option("-C,--committed", committed,  "Committed switch number (lowest is 0)", true);
+	app.add_option("-d,--diseqc", diseqc,
+								 "Diseqc command string (C: send committed command; "
+								 "U: send uncommitted command",
+								 true);
+	app.add_option("-U,--uncommitted", uncommitted, "Uncommitted switch number (lowest is 0)", true);
+	app.add_option("-C,--committed", committed, "Committed switch number (lowest is 0)", true);
 
 	try {
-    app.parse(argc, argv);
-	} catch (const CLI::ParseError &e) {
+		app.parse(argc, argv);
+	} catch (const CLI::ParseError& e) {
 		app.exit(e);
 		return -1;
 	}
-	if(options.freq < 4800000)
+	if (options.freq < 4800000)
 		options.lnb_type = C_LNB;
 	parse_pls(pls_entries);
 	printf("adapter=%d\n", adapter_no);
@@ -321,10 +317,10 @@ int options_t::parse_options(int argc, char**argv)
 	printf("freq=%d\n", freq);
 
 	printf("pol=%d\n", pol);
-	assert(symbol_rate<0 || symbol_rate <=60000);
+	assert(symbol_rate < 0 || symbol_rate <= 60000);
 	printf("pls_codes[%ld]={ ", pls_codes.size());
-	for(auto c: pls_codes)
-		printf("%d, ",c);
+	for (auto c : pls_codes)
+		printf("%d, ", c);
 	printf("}\n");
 
 	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
@@ -332,12 +328,9 @@ int options_t::parse_options(int argc, char**argv)
 	return 0;
 }
 
-
-static int epoll_timeout = 5000000; //in ms
-
+static int epoll_timeout = 5000000; // in ms
 
 //#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
-
 
 /** @brief Print the status
  * Print the status contained in festatus, this status says if the card is lock, sync etc.
@@ -345,49 +338,45 @@ static int epoll_timeout = 5000000; //in ms
  * @param festatus the status to display
  */
 void print_tuner_status(fe_status_t festatus) {
-//printf("FE_STATUS:");
-	if (festatus & FE_HAS_SIGNAL) printf("     FE_HAS_SIGNAL : found something above the noise level");
-	if (festatus & FE_HAS_CARRIER) printf("     FE_HAS_CARRIER : found a DVB signal");
-	if (festatus & FE_HAS_VITERBI) printf("     FE_HAS_VITERBI : FEC is stable");
-	if (festatus & FE_HAS_SYNC) printf("     FE_HAS_SYNC : found sync bytes");
-	if (festatus & FE_HAS_LOCK) printf("     FE_HAS_LOCK : everything's working...");
-	if (festatus & FE_TIMEDOUT) printf("     FE_TIMEDOUT : no lock within the last about 2 seconds");
-	if (festatus & FE_REINIT) printf("     FE_REINIT : frontend was reinitialized");
+	// printf("FE_STATUS:");
+	if (festatus & FE_HAS_SIGNAL)
+		printf("     FE_HAS_SIGNAL : found something above the noise level");
+	if (festatus & FE_HAS_CARRIER)
+		printf("     FE_HAS_CARRIER : found a DVB signal");
+	if (festatus & FE_HAS_VITERBI)
+		printf("     FE_HAS_VITERBI : FEC is stable");
+	if (festatus & FE_HAS_SYNC)
+		printf("     FE_HAS_SYNC : found sync bytes");
+	if (festatus & FE_HAS_LOCK)
+		printf("     FE_HAS_LOCK : everything's working...");
+	if (festatus & FE_TIMEDOUT)
+		printf("     FE_TIMEDOUT : no lock within the last about 2 seconds");
+	if (festatus & FE_REINIT)
+		printf("     FE_REINIT : frontend was reinitialized");
 	printf("---");
-/*
-	fe_status & FE_HAS_LOCK : GOOD
-	fe_status & (FE_HAS_SYNC | FE_HAS_VITERBI | FE_HAS_CARRIER)) : BAD
-	fe_status & FE_HAS_SIGNAL : FAINT
-
-*/
-
 }
 
-int check_lock_status(int fefd)
-{
+int check_lock_status(int fefd) {
 	fe_status_t status;
-	while(ioctl(fefd, FE_READ_STATUS, &status) < 0){
+	while (ioctl(fefd, FE_READ_STATUS, &status) < 0) {
 		if (errno == EINTR) {
 			continue;
 		}
 		printf("FE_READ_STATUS: %s", strerror(errno));
 		return -1;
 	}
-			bool signal = status & FE_HAS_SIGNAL;
-			bool carrier = status & FE_HAS_CARRIER;
-			bool viterbi = status & FE_HAS_VITERBI;
-			bool has_sync = status & FE_HAS_SYNC;
-			bool has_lock = status & FE_HAS_LOCK;
-			bool timedout = status & FE_TIMEDOUT;
+	bool signal = status & FE_HAS_SIGNAL;
+	bool carrier = status & FE_HAS_CARRIER;
+	bool viterbi = status & FE_HAS_VITERBI;
+	bool has_sync = status & FE_HAS_SYNC;
+	bool has_lock = status & FE_HAS_LOCK;
+	bool timedout = status & FE_TIMEDOUT;
 
-			printf("\tFE_READ_STATUS: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", status,
-						 signal,  carrier, viterbi, has_sync, timedout, has_lock);
+	printf("\tFE_READ_STATUS: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", status, signal,
+				 carrier, viterbi, has_sync, timedout, has_lock);
 
 	return status & FE_HAS_LOCK;
 }
-
-
-
 
 /** The structure for a diseqc command*/
 struct diseqc_cmd {
@@ -395,59 +384,73 @@ struct diseqc_cmd {
 	uint32_t wait;
 };
 
-
-
 /** @brief Wait msec miliseconds
  */
-static inline void msleep(uint32_t msec)
-{
-	struct timespec req = { msec / 1000, 1000000 * (msec % 1000) };
-	while (nanosleep(&req, &req));
+static inline void msleep(uint32_t msec) {
+	struct timespec req = {msec / 1000, 1000000 * (msec % 1000)};
+	while (nanosleep(&req, &req))
+		;
 }
-
-
-
 
 #define FREQ_MULT 1000
 
 #define CBAND_LOF 5150
 
-std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_freq_min, int lo_frequency)
-{
+void save_constellation_samples(bool pol_is_v, struct dtv_fe_constellation& cs);
+
+std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_freq_min,
+														 int lo_frequency) {
+
+	bool get_constellation = options.command == command_t::IQ;
+	auto num_constellation_samples = options.num_samples;
+
 	struct dtv_property p[] = {
-		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
-		{ .cmd = DTV_FREQUENCY },
-		{ .cmd = DTV_VOLTAGE },         // 0 - 13V Vertical, 1 - 18V horizontal, 2 - Voltage OFF
-		{ .cmd = DTV_SYMBOL_RATE },
-		{ .cmd = DTV_STAT_SIGNAL_STRENGTH	},
-		{ .cmd = DTV_STAT_CNR	},
-		{ .cmd = DTV_MODULATION },      // 5 - QPSK, 6 - 8PSK
-		{ .cmd = DTV_INNER_FEC },
-		{ .cmd = DTV_INVERSION },
-		{ .cmd = DTV_ROLLOFF },
-		{ .cmd = DTV_PILOT },            // 0 - ON, 1 - OFF
-		{ .cmd = DTV_TONE },
-		{ .cmd = DTV_STREAM_ID },
-		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
-		{ .cmd = DTV_ISI_LIST },
-		{ .cmd = DTV_MATYPE_LIST },
-		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
+		{.cmd = DTV_DELIVERY_SYSTEM}, // 0 DVB-S, 9 DVB-S2
+		{.cmd = DTV_FREQUENCY},
+		{.cmd = DTV_VOLTAGE}, // 0 - 13V Vertical, 1 - 18V horizontal, 2 - Voltage OFF
+		{.cmd = DTV_SYMBOL_RATE},
+		{.cmd = DTV_STAT_SIGNAL_STRENGTH},
+		{.cmd = DTV_STAT_CNR},
+		{.cmd = DTV_MODULATION}, // 5 - QPSK, 6 - 8PSK
+		{.cmd = DTV_INNER_FEC},
+		{.cmd = DTV_INVERSION},
+		{.cmd = DTV_ROLLOFF},
+		{.cmd = DTV_PILOT}, // 0 - ON, 1 - OFF
+		{.cmd = DTV_TONE},
+		{.cmd = DTV_STREAM_ID},
+		{.cmd = DTV_SCRAMBLING_SEQUENCE_INDEX},
+		{.cmd = DTV_ISI_LIST},
+		{.cmd = DTV_MATYPE},
+		{.cmd = DTV_CONSTELLATION},
 	};
 	struct dtv_properties cmdseq = {
 		.num = sizeof(p)/sizeof(p[0]),
 		.props = p
 	};
-	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
-		printf("ioctl failed: %s\n", strerror(errno));
-		assert(0); //todo: handle EINTR
-		return  std::make_tuple(allowed_freq_min, 1000000);
+	if(!get_constellation)
+		cmdseq.num -= 1;
+	else {
+		if (num_constellation_samples > sizeof(samples) / sizeof(samples[0]))
+			num_constellation_samples = sizeof(samples) / sizeof(samples[0]);
+
+		auto& cs = cmdseq.props[cmdseq.num - 1].u.constellation;
+
+		cs.num_samples = num_constellation_samples;
+		cs.samples = &samples[0];
+
 	}
 
-	int i=0;
+	if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
+		printf("ioctl failed: %s\n", strerror(errno));
+		assert(0); // todo: handle EINTR
+		return std::make_tuple(allowed_freq_min, 1000000);
+	}
+
+	int i = 0;
 	int dtv_delivery_system_prop = cmdseq.props[i++].u.data;
-	int dtv_frequency_prop = cmdseq.props[i++].u.data; //in kHz (DVB-S)  or in Hz (DVB-C and DVB-T)
+	int dtv_frequency_prop = cmdseq.props[i++].u.data; // in kHz (DVB-S)  or in Hz (DVB-C and DVB-T)
 	int dtv_voltage_prop = cmdseq.props[i++].u.data;
-	int dtv_symbol_rate_prop = cmdseq.props[i++].u.data; //in Hz
+	int dtv_symbol_rate_prop = cmdseq.props[i++].u.data; // in Hz
 
 	auto dtv_stat_signal_strength_prop = cmdseq.props[i++].u.st;
 	auto dtv_stat_cnr_prop = cmdseq.props[i++].u.st;
@@ -457,22 +460,26 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int dtv_inversion_prop = cmdseq.props[i++].u.data;
 	int dtv_rolloff_prop = cmdseq.props[i++].u.data;
 	int dtv_pilot_prop = cmdseq.props[i++].u.data;
-#if 0
 	int dtv_tone_prop = cmdseq.props[i++].u.data;
-#else
-	i++;
-#endif
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
 	assert(cmdseq.props[i].u.buffer.len == 32);
-	uint32_t* isi_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
+	uint32_t* isi_bitset = (uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256
+																																		 // entries...
 
-	assert(cmdseq.props[i].u.buffer.len == 32);
-	uint32_t* matype_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
+	int matype = cmdseq.props[i++].u.data;
 
-	assert(i== cmdseq.num);
-//int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
+	if(get_constellation) {
+
+	 	auto& cs = cmdseq.props[i++].u.constellation;
+		assert(cs.num_samples >= 0);
+		assert((int)cs.num_samples <= sizeof(samples) / sizeof(samples[0]));
+		save_constellation_samples(pol_is_v, cs);
+	}
+
+	assert(i == cmdseq.num);
+	// int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
 	int currentfreq;
 	int currentpol;
 	int currentsr;
@@ -483,7 +490,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int currentrol;
 	int currentpil;
 
-	currentfreq = (dtv_frequency_prop  +(signed)lo_frequency);
+	currentfreq = (dtv_frequency_prop + (signed)lo_frequency);
 	currentpol = dtv_voltage_prop;
 	currentsr = dtv_symbol_rate_prop;
 	currentsys = dtv_delivery_system_prop;
@@ -492,240 +499,219 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	currentinv = dtv_inversion_prop;
 	currentrol = dtv_rolloff_prop;
 	currentpil = dtv_pilot_prop;
-	//assert(currentpol == 1-polarisation);
 
-	if(currentfreq < allowed_freq_min)
-		return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
+	if (currentfreq < allowed_freq_min)
+		return std::make_tuple(currentfreq, (135 * (currentsr / FREQ_MULT)) / (2 * 100));
 	if (dtv_frequency_prop != 0)
-		printf("RESULT: freq=%-8.3f%c ", currentfreq/ (double)FREQ_MULT, pol_is_v? 'V': 'H');
+		printf("RESULT: freq=%-8.3f%c ", currentfreq / (double)FREQ_MULT, pol_is_v ? 'V' : 'H');
 	else
-		printf("RESULT: freq=%-8.3f ", dtv_frequency_prop/(double)FREQ_MULT);
+		printf("RESULT: freq=%-8.3f ", dtv_frequency_prop / (double)FREQ_MULT);
 
+	printf("Symrate=%-5d ", currentsr / FREQ_MULT);
 
-	printf("Symrate=%-5d ", currentsr/FREQ_MULT);
-
-	printf("Stream=%-5d pls_mode=%2d:%5d ", dtv_stream_id_prop&0xff,
-				 (dtv_stream_id_prop>>26) & 0x3, (dtv_stream_id_prop>>8) & 0x3FFFF);
-	int num_isi=0;
-	for(int i=0; i< 256; ++i) {
-		int j = i/32;
-		auto mask = ((uint32_t)1)<< (i%32);
-		if(isi_bitset[j]& mask) {
-			if(num_isi==0)
+	printf("Stream=%-5d pls_mode=%2d:%5d ", dtv_stream_id_prop & 0xff, (dtv_stream_id_prop >> 26) & 0x3,
+				 (dtv_stream_id_prop >> 8) & 0x3FFFF);
+	int num_isi = 0;
+	for (int i = 0; i < 256; ++i) {
+		int j = i / 32;
+		auto mask = ((uint32_t)1) << (i % 32);
+		if (isi_bitset[j] & mask) {
+			if (num_isi == 0)
 				printf("ISI list:");
 			printf(" %d", i);
 			num_isi++;
 		}
 	}
-	if(num_isi>0)  {
+	if (num_isi > 0) {
 		printf("\n");
 	}
 
-	int num_matype=0;
-	for(int i=0; i< 256; ++i) {
-		int j = i/32;
-		auto mask = ((uint32_t)1)<< (i%32);
-		if(matype_bitset[j]& mask) {
-			if(num_matype==0)
-				printf("MATYPE list:");
-			printf(" %d", i);
-			num_matype++;
-		}
-	}
-	if(num_matype>0)  {
-		printf("\n");
+	printf("MATYPE: 0x%x\n", matype);
+
+	for (int i = 0; i < dtv_stat_signal_strength_prop.len; ++i) {
+		if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_DECIBEL)
+			printf("SIG=%4.2lfdB ", dtv_stat_signal_strength_prop.stat[i].svalue / 1000.);
+		else if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_RELATIVE)
+			printf("SIG=%3lld%% ", (dtv_stat_signal_strength_prop.stat[i].uvalue * 100) / 65535);
+		else if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_NOT_AVAILABLE)
+			printf("SIG=%3lld?? ", (dtv_stat_signal_strength_prop.stat[i].uvalue * 100) / 65536);
 	}
 
-	for(int i=0; i < dtv_stat_signal_strength_prop.len; ++i) {
-		if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_DECIBEL)
-			printf("SIG=%4.2lfdB ", dtv_stat_signal_strength_prop.stat[i].svalue/1000.);
-		else if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_RELATIVE)
-			printf("SIG=%3lld%% ", (dtv_stat_signal_strength_prop.stat[i].uvalue*100)/65535);
-		else if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_NOT_AVAILABLE)
-			printf("SIG=%3lld?? ", (dtv_stat_signal_strength_prop.stat[i].uvalue*100)/65536);
-	}
-
-	for(int i=0; i < dtv_stat_cnr_prop.len; ++i) {
-		if (dtv_stat_cnr_prop.stat[i].scale== FE_SCALE_DECIBEL)
-			printf("CNR=%4.2lfdB ", dtv_stat_cnr_prop.stat[i].svalue/1000.);
-		else if (dtv_stat_cnr_prop.stat[i].scale== FE_SCALE_RELATIVE)
-			printf("CNR=%3lld%% ", (dtv_stat_cnr_prop.stat[i].uvalue*100)/65535);
-		else if (dtv_stat_cnr_prop.stat[i].scale== FE_SCALE_NOT_AVAILABLE)
-			printf("CNR=%3lld?? ", (dtv_stat_cnr_prop.stat[i].uvalue*100)/65537);
+	for (int i = 0; i < dtv_stat_cnr_prop.len; ++i) {
+		if (dtv_stat_cnr_prop.stat[i].scale == FE_SCALE_DECIBEL)
+			printf("CNR=%4.2lfdB ", dtv_stat_cnr_prop.stat[i].svalue / 1000.);
+		else if (dtv_stat_cnr_prop.stat[i].scale == FE_SCALE_RELATIVE)
+			printf("CNR=%3lld%% ", (dtv_stat_cnr_prop.stat[i].uvalue * 100) / 65535);
+		else if (dtv_stat_cnr_prop.stat[i].scale == FE_SCALE_NOT_AVAILABLE)
+			printf("CNR=%3lld?? ", (dtv_stat_cnr_prop.stat[i].uvalue * 100) / 65537);
 	}
 
 	switch (dtv_delivery_system_prop) {
-	case 4:  printf("DSS    ");  break;
-	case 5:  printf("DVB-S  ");  break;
-	case 6:  printf("DVB-S2 "); break;
-	default: printf("SYS(%d) ", dtv_delivery_system_prop); break;
+	case 4:
+		printf("DSS    ");
+		break;
+	case 5:
+		printf("DVB-S  ");
+		break;
+	case 6:
+		printf("DVB-S2 ");
+		break;
+	default:
+		printf("SYS(%d) ", dtv_delivery_system_prop);
+		break;
 	}
 
 	switch (dtv_modulation_prop) {
-	case 0: printf("QPSK "); break;
-	case 9: printf("8PSK "); break;
-	default: printf("MOD(%d) ", dtv_modulation_prop); break;
+	case 0:
+		printf("QPSK ");
+		break;
+	case 9:
+		printf("8PSK ");
+		break;
+	default:
+		printf("MOD(%d) ", dtv_modulation_prop);
+		break;
 	}
 
 	switch (dtv_inner_fec_prop) {
-	case 0: printf("FEC_NONE ");  break;
-	case 1: printf("FEC_1_2  ");   break;
-	case 2: printf("FEC_2_3  ");   break;
-	case 3: printf("FEC_3_4  ");   break;
-	case 4: printf("FEC_4_5  ");   break;
-	case 5: printf("FEC_5_6  ");   break;
-	case 6: printf("FEC_6_7  ");   break;
-	case 7: printf("FEC_7_8  ");   break;
-	case 8: printf("FEC_8_9  ");   break;
-	case 9: printf("FEC_AUTO ");  break;
-	case 10: printf("FEC_3_5  ");  break;
-	case 11: printf("FEC_9_10 "); break;
-	default: printf("FEC (%d)  ", dtv_inner_fec_prop); break;
+	case 0:
+		printf("FEC_NONE ");
+		break;
+	case 1:
+		printf("FEC_1_2  ");
+		break;
+	case 2:
+		printf("FEC_2_3  ");
+		break;
+	case 3:
+		printf("FEC_3_4  ");
+		break;
+	case 4:
+		printf("FEC_4_5  ");
+		break;
+	case 5:
+		printf("FEC_5_6  ");
+		break;
+	case 6:
+		printf("FEC_6_7  ");
+		break;
+	case 7:
+		printf("FEC_7_8  ");
+		break;
+	case 8:
+		printf("FEC_8_9  ");
+		break;
+	case 9:
+		printf("FEC_AUTO ");
+		break;
+	case 10:
+		printf("FEC_3_5  ");
+		break;
+	case 11:
+		printf("FEC_9_10 ");
+		break;
+	default:
+		printf("FEC (%d)  ", dtv_inner_fec_prop);
+		break;
 	}
 
 	switch (dtv_inversion_prop) {
-	case 0:  printf("INV_OFF ");  break;
-	case 1:  printf("INV_ON  ");   break;
-	case 2:  printf("INVAUTO "); break;
-	default: printf("INV (%d) ", dtv_inversion_prop); break;
+	case 0:
+		printf("INV_OFF ");
+		break;
+	case 1:
+		printf("INV_ON  ");
+		break;
+	case 2:
+		printf("INVAUTO ");
+		break;
+	default:
+		printf("INV (%d) ", dtv_inversion_prop);
+		break;
 	}
 
-
 	switch (dtv_pilot_prop) {
-	case 0:  printf("PIL_ON  ");   break;
-	case 1:  printf("PIL_OFF ");  break;
-	case 2:  printf("PILAUTO "); break;
-	default: printf("PIL (%d ) ", dtv_pilot_prop); break;
+	case 0:
+		printf("PIL_ON  ");
+		break;
+	case 1:
+		printf("PIL_OFF ");
+		break;
+	case 2:
+		printf("PILAUTO ");
+		break;
+	default:
+		printf("PIL (%d ) ", dtv_pilot_prop);
+		break;
 	}
 
 	switch (dtv_rolloff_prop) {
-	case 0:  printf("ROLL_35\n");   break;
-	case 1:  printf("ROLL_20\n");   break;
-	case 2:  printf("ROLL_25\n");   break;
-	case 3:  printf("ROLL_AUTO\n"); break;
-	default: printf("ROLL(%d)\n", dtv_rolloff_prop); break;
+	case 0:
+		printf("ROLL_35\n");
+		break;
+	case 1:
+		printf("ROLL_20\n");
+		break;
+	case 2:
+		printf("ROLL_25\n");
+		break;
+	case 3:
+		printf("ROLL_AUTO\n");
+		break;
+	default:
+		printf("ROLL(%d)\n", dtv_rolloff_prop);
+		break;
 	}
 
-	if(fpout) {
-		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n",
-						dtv_delivery_system_prop==6 ? 2:1, dtv_frequency_prop +(signed) lo_frequency,
-						pol_is_v? 'V': 'H',
-						currentsr,
-						dtv_inner_fec_prop <8 ? dtv_inner_fec_prop:
-						dtv_inner_fec_prop == FEC_3_5 ? 3:
-						dtv_inner_fec_prop == FEC_9_10 ? 9:
-						dtv_inner_fec_prop == FEC_2_5 ? 2: 0,
-						dtv_inner_fec_prop <8 ? (dtv_inner_fec_prop+1):
-						dtv_inner_fec_prop == FEC_3_5 ? 5:
-						dtv_inner_fec_prop == FEC_9_10 ? 10:
-						dtv_inner_fec_prop == FEC_2_5 ? 5 :0,
-						dtv_modulation_prop ==0? "QPSK":
-						dtv_modulation_prop ==9? "8PSK": "AUTO"
-			);
+	if (fpout) {
+		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n", dtv_delivery_system_prop == 6 ? 2 : 1,
+						dtv_frequency_prop + (signed)lo_frequency, pol_is_v ? 'V' : 'H', currentsr,
+						dtv_inner_fec_prop < 8					 ? dtv_inner_fec_prop
+						: dtv_inner_fec_prop == FEC_3_5	 ? 3
+						: dtv_inner_fec_prop == FEC_9_10 ? 9
+						: dtv_inner_fec_prop == FEC_2_5	 ? 2
+						: 0,
+						dtv_inner_fec_prop < 8					 ? (dtv_inner_fec_prop + 1)
+						: dtv_inner_fec_prop == FEC_3_5	 ? 5
+						: dtv_inner_fec_prop == FEC_9_10 ? 10
+						: dtv_inner_fec_prop == FEC_2_5	 ? 5
+						: 0,
+						dtv_modulation_prop == 0	 ? "QPSK"
+						: dtv_modulation_prop == 9 ? "8PSK"
+						: "AUTO");
 		fflush(fpout);
 	}
 
-	return std::make_tuple(currentfreq, (135*(currentsr/FREQ_MULT)) / (2 *100));
+	return std::make_tuple(currentfreq, (135 * (currentsr / FREQ_MULT)) / (2 * 100));
 }
 
-uint32_t freq[65536*4];
-int32_t rf_level[65536*4];
-int32_t candidate_frequencies[65536*4];
 
+void save_constellation_samples(bool pol_is_v, struct dtv_fe_constellation& cs) {
 
-
-dtv_fe_constellation_sample samples[65536];
-void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples=1024*4, int constel_select=1)
-{
-	int ret=0;
-	if (num_samples > sizeof(samples)/sizeof(samples[0]))
-		num_samples  = sizeof(samples)/sizeof(samples[0]);
-	printf("==========================\n");
-	printf("Getting IQ samples\n");
-	assert(options.pol==2|| options.pol==1);
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
-			break;
-	}
-
-	ret = driver_start_constellation(fefd, num_samples, constel_select);
-	if(ret!=0) {
-		printf("constellation FAILED\n");
-		exit(1);
-	}
-
-	struct dvb_frontend_event event{};
-	bool timedout=false;
-	bool locked=false;
-	int count=0;
-	while(count<3 && !timedout && !locked) {
-		struct epoll_event events[1]{{}};
-		auto s = epoll_wait(efd, events, 1, epoll_timeout);
-		if(s<0)
-			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if(s==0) {
-			//printf("TIMEOUT\n");
-			printf("\tTIMEOUT\n");
-			timedout=true;
-			break;
-		}
-		int r = ioctl(fefd, FE_GET_EVENT, &event);
-		if(r<0)
-			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
-		else {
-			timedout = event.status & FE_TIMEDOUT;
-			locked = event.status & FE_HAS_VITERBI;
-			if(count>=1)
-				printf("\tFE_GET_EVENT: stat=%d, timedout=%d locked=%d\n", event.status, timedout, locked);
-			count++;
-		}
-	}
-
-	if(check_lock_status(fefd)) {
-		struct dtv_property p[] = {
-			{ .cmd = DTV_CONSTELLATION},  // 0 DVB-S, 9 DVB-S2
-		};
-		struct dtv_properties cmdseq = {
-			.num = sizeof(p)/sizeof(p[0]),
-			.props = p
-		};
-		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "iq", pol_is_v? 'V':'H');
-
-		decltype (cmdseq.props[0].u.constellation) cs{};
-		cs.num_samples = sizeof(samples)/sizeof(samples[0]);
-		cs.samples = samples;
-		cmdseq.props[0].u.constellation =cs;
-		if(ioctl(fefd, FE_GET_PROPERTY, &cmdseq)<0) {
-			printf("ioctl failed: %s\n", strerror(errno));
-			assert(0); //todo: handle EINTR
-			return;
-		}
-		printf("Constellation has %d samples\n", cs.num_samples);
-		if(cs.num_samples>0) {
+	char fname[512];
+	sprintf(fname, options.filename_pattern.c_str(),  "iq", options.adapter_no,
+					options.freq/1000.,
+					pol_is_v? 'V':'H');
+	printf("Constellation has %d samples\n", cs.num_samples);
+	if (cs.num_samples > 0) {
 			FILE* fpout = fopen(fname, "w");
-			assert (fpout);
-			for(int i=0; i < cs.num_samples; ++i)
-				fprintf(fpout,"%d %d\n", cs.samples[i].real, cs.samples[i].imag);
+			assert(fpout);
+			for (int i = 0; i < cs.num_samples; ++i)
+				fprintf(fpout, "%d %d\n", cs.samples[i].real, cs.samples[i].imag);
 			fclose(fpout);
-		}
-	} else
-		printf("\tnot locked => NO SAMPLES\n");
-	//printf("-------------------------------------------------\n");
+		}  else
+		printf("\tNO SAMPLES\n");
 }
-
 
 void close_frontend(int fefd);
 
-int get_frontend_info(int fefd)
-{
-	struct dvb_frontend_extended_info fe_info{}; //front_end_info
-	//auto now =time(NULL);
-	//This does not produce anything useful. Driver would have to be adapted
+int get_frontend_info(int fefd) {
+	struct dvb_frontend_extended_info fe_info {}; // front_end_info
+	// auto now =time(NULL);
+	// This does not produce anything useful. Driver would have to be adapted
 
 	int res;
-	if ( (res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)){
+	if ((res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)) {
 		printf("FE_GET_EXTENDED_INFO failed: %s\n", strerror(errno));
 		close_frontend(fefd);
 		return -1;
@@ -740,47 +726,25 @@ int get_frontend_info(int fefd)
 		fe_info.caps:
 	*/
 
-
 	struct dtv_property properties[16];
 	memset(properties, 0, sizeof(properties));
-	unsigned int i=0;
-	properties[i++].cmd      = DTV_ENUM_DELSYS;
-	properties[i++].cmd      = DTV_DELIVERY_SYSTEM;
-	struct dtv_properties props ={
-		.num=i,
-		.props = properties
-	};
+	unsigned int i = 0;
+	properties[i++].cmd = DTV_ENUM_DELSYS;
+	properties[i++].cmd = DTV_DELIVERY_SYSTEM;
+	struct dtv_properties props = {.num = i, .props = properties};
 
 	if ((ioctl(fefd, FE_GET_PROPERTY, &props)) == -1) {
 		printf("FE_GET_PROPERTY failed: %s", strerror(errno));
-		//set_interrupted(ERROR_TUNE<<8);
 		close_frontend(fefd);
 		return -1;
 	}
 
-	//auto current_fe_type = chdb::linuxdvb_fe_delsys_to_type (fe_info.type);
-	//auto& supported_delsys = properties[0].u.buffer.data;
-//	int num_delsys =  properties[0].u.buffer.len;
-#if 0
-	auto tst =dump_caps((chdb::fe_caps_t)fe_info.caps);
-	printf("CAPS: %s", tst);
-	fe.delsys.resize(num_delsys);
-	for(int i=0 ; i<num_delsys; ++i) {
-		auto delsys = (chdb::fe_delsys_t) supported_delsys[i];
-		//auto fe_type = chdb::delsys_to_type (delsys);
-		auto* s = enum_to_str(delsys);
-		printf("delsys[" << i << "]=" << s);
-		changed |= (i >= fe.delsys.size() || fe.delsys[i].fe_type!= delsys);
-		fe.delsys[i].fe_type = delsys;
-	}
-#endif
 	return 0;
 }
 
-int open_frontend(const char* frontend_fname)
-{
-	const bool rw=true;
-	int rw_flag = rw?  O_RDWR : O_RDONLY;
+int open_frontend(const char* frontend_fname) {
+	const bool rw = true;
+	int rw_flag = rw ? O_RDWR : O_RDONLY;
 	int fefd = open(frontend_fname, rw_flag | O_NONBLOCK);
 	if (fefd < 0) {
 		printf("open_frontend failed: %s\n", strerror(errno));
@@ -789,9 +753,8 @@ int open_frontend(const char* frontend_fname)
 	return fefd;
 }
 
-void close_frontend(int fefd)
-{
-	if(fefd<0)
+void close_frontend(int fefd) {
+	if (fefd < 0)
 		return;
 	if (::close(fefd) < 0) {
 		printf("close_frontend failed: %s: ", strerror(errno));
@@ -800,23 +763,20 @@ void close_frontend(int fefd)
 }
 
 struct cmdseq_t {
-	struct dtv_properties cmdseq{};
+	struct dtv_properties cmdseq {};
 	std::array<struct dtv_property, 16> props;
 
-	cmdseq_t() {
-		cmdseq.props = & props[0];
-	}
-	template<typename T>
-	void add (int cmd, T data) {
-		assert(cmdseq.num < props.size()-1);
+	cmdseq_t() { cmdseq.props = &props[0]; }
+	template <typename T> void add(int cmd, T data) {
+		assert(cmdseq.num < props.size() - 1);
 		memset(&cmdseq.props[cmdseq.num], 0, sizeof(cmdseq.props[cmdseq.num]));
 		cmdseq.props[cmdseq.num].cmd = cmd;
 		cmdseq.props[cmdseq.num].u.data = (int)data;
 		cmdseq.num++;
 	};
 
-	void add (int cmd, const dtv_fe_constellation& constellation) {
-		assert(cmdseq.num < props.size()-1);
+	void add(int cmd, const dtv_fe_constellation& constellation) {
+		assert(cmdseq.num < props.size() - 1);
 		memset(&cmdseq.props[cmdseq.num], 0, sizeof(cmdseq.props[cmdseq.num]));
 		cmdseq.props[cmdseq.num].cmd = cmd;
 		cmdseq.props[cmdseq.num].u.constellation = constellation;
@@ -824,8 +784,7 @@ struct cmdseq_t {
 	};
 
 	void add_pls_codes(int cmd, uint32_t* codes, int num_codes) {
-		//printf("adding pls_codes\n");
-		assert(cmdseq.num< props.size()-1);
+		assert(cmdseq.num < props.size() - 1);
 		auto* tvp = &cmdseq.props[cmdseq.num];
 		memset(tvp, 0, sizeof(cmdseq.props[cmdseq.num]));
 		tvp->cmd = cmd;
@@ -834,20 +793,22 @@ struct cmdseq_t {
 		cmdseq.num++;
 	};
 
-	void add_pls_range(int cmd, uint32_t pls_start, uint32_t pls_end) {
-		assert(cmdseq.num< props.size()-1);
+	void add_pls_range(int cmd, uint32_t pls_start, uint32_t pls_end, int timeout) {
+		assert(cmdseq.num < props.size() - 1);
 		auto* tvp = &cmdseq.props[cmdseq.num];
 		memset(tvp, 0, sizeof(cmdseq.props[cmdseq.num]));
 		tvp->cmd = cmd;
 		printf("adding scramble code range:%d-%d\n", pls_start, pls_end);
-		memcpy(&tvp->u.buffer.data[0*sizeof(uint32_t)], &pls_start, sizeof(pls_start));
-		memcpy(&tvp->u.buffer.data[1*sizeof(uint32_t)], &pls_end, sizeof(pls_end));
-		tvp->u.buffer.len = 2*sizeof(uint32_t);
+		pls_start = make_code(0, pls_start, timeout);
+		pls_end = make_code(0, pls_end, timeout);
+		memcpy(&tvp->u.buffer.data[0 * sizeof(uint32_t)], &pls_start, sizeof(pls_start));
+		memcpy(&tvp->u.buffer.data[1 * sizeof(uint32_t)], &pls_end, sizeof(pls_end));
+		tvp->u.buffer.len = 2 * sizeof(uint32_t);
 		cmdseq.num++;
 	};
 
-	int tune(int fefd, bool dotune=true) {
-		if(dotune)
+	int tune(int fefd, bool dotune = true) {
+		if (dotune)
 			add(DTV_TUNE, 0);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
 			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
@@ -872,9 +833,11 @@ struct cmdseq_t {
 		}
 		return 0;
 	}
-	int constellation_samples(int fefd, int num_samples, int constel_select=0,
+	int constellation_samples(int fefd, int num_samples, int constel_select = 0,
 														dtv_fe_constellation_method method = CONSTELLATION_METHOD_DEFAULT) {
-		struct dtv_fe_constellation cs {.num_samples= (__u32) num_samples, .method=(__u8)method};
+		struct dtv_fe_constellation cs {
+			.num_samples = (__u32)num_samples, .method = (__u8)method
+		};
 		add(DTV_CONSTELLATION, cs);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
 			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
@@ -884,12 +847,11 @@ struct cmdseq_t {
 	}
 };
 
-
-int clear(int fefd)
-{
-
+int clear(int fefd) {
 	struct dtv_property pclear[] = {
-		{ .cmd = DTV_CLEAR,},		//RESET frontend's cached data
+		{
+			.cmd = DTV_CLEAR,
+		},
 
 	};
 	struct dtv_properties cmdclear = {
@@ -898,227 +860,133 @@ int clear(int fefd)
 	};
 	if ((ioctl(fefd, FE_SET_PROPERTY, &cmdclear)) == -1) {
 		printf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
-		//set_interrupted(ERROR_TUNE<<8);
 		return -1;
 	}
 	return 0;
 }
 
-
-
-
-int tune(int fefd, int frequency, bool pol_is_v)
-{
-	printf("Tuning to DVBS1/2 %.3f%c\n", frequency/1000., pol_is_v? 'V': 'H');
-	if(clear(fefd)<0)
+int tune(int fefd, int frequency, bool pol_is_v) {
+	printf("Tuning to DVBS1/2 %.3f%c\n", frequency / 1000., pol_is_v ? 'V' : 'H');
+	if (clear(fefd) < 0)
 		return -1;
 
 	do_lnb_and_diseqc(fefd, frequency, pol_is_v);
 	return tune_it(fefd, frequency, pol_is_v);
 }
 
-
-
-int driver_start_constellation(int fefd, int num_samples, int constel_select,
-															 dtv_fe_constellation_method method)
-{
-	cmdseq_t cmdseq;
-	if(clear(fefd)<0)
-		return -1;
-	cmdseq.constellation_samples(fefd, num_samples, constel_select, method);
-	return 0;
-}
-
-
-
-
-
 /*
 	pls_mode>=0 means that only this pls will be scanned (no unscrambled transponders)
 	Usually it is better to use pls_modes; these will be used in addition to unscrambled
- */
-int tune_it(int fefd, int frequency_, bool pol_is_v)
-{
+*/
+int tune_it(int fefd, int frequency_, bool pol_is_v) {
 	cmdseq_t cmdseq;
 
 	auto lo_frequency = get_lo_frequency(frequency_);
-	auto frequency= (long)(frequency_-(signed)lo_frequency);
-	if(options.algo == algo_t::BLIND) {
+	auto frequency = (long)(frequency_ - (signed)lo_frequency);
+	if (options.algo == algo_t::BLIND) {
 		printf("BLIND TUNE search-range=%d\n", options.search_range);
-		cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
-		cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
-		//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-		cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-		if(options.symbol_rate>0)
-			cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
-		//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-		cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
+		cmdseq.add(DTV_ALGORITHM, ALGORITHM_BLIND);
+		cmdseq.add(DTV_DELIVERY_SYSTEM, (int)SYS_AUTO);
 
-		if(options.pls_codes.size()>0)
+		cmdseq.add(DTV_SEARCH_RANGE, options.search_range * 1000); // how far carrier may shift
+		if (options.symbol_rate > 0)
+			cmdseq.add(DTV_SYMBOL_RATE, options.symbol_rate * 1000); // controls tuner bandwidth
+		// cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+		cmdseq.add(DTV_FREQUENCY, frequency); // For satellite delivery systems, it is measured in kHz.
+
+		if (options.pls_codes.size() > 0)
 			cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
 
-		if(options.end_pls_code> options.start_pls_code)
-			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
-		cmdseq.add(DTV_STREAM_ID,  options.stream_id);
+		if (options.end_pls_code > options.start_pls_code)
+			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code,
+													 options.pls_search_timeout);
+		cmdseq.add(DTV_STREAM_ID, options.stream_id);
 	} else {
 		bool warm = options.algo == algo_t::WARM;
-		printf("%s TUNE search-range=%d\n", warm? "WARM": "COLD", options.search_range);
-		cmdseq.add(DTV_ALGORITHM,  warm ? ALGORITHM_WARM : ALGORITHM_COLD);
-		cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) options.delivery_system);
-		cmdseq.add(DTV_MODULATION,  (int) options.modulation);
-		//cmdseq.add(DTV_VOLTAGE,  1-polarisation);
-		cmdseq.add(DTV_SEARCH_RANGE,  options.search_range*1000); //how far carrier may shift
-		if(options.symbol_rate>0)
-			cmdseq.add(DTV_SYMBOL_RATE,  options.symbol_rate*1000); //controls tuner bandwidth
-		//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
-		cmdseq.add(DTV_FREQUENCY,  frequency); //For satellite delivery systems, it is measured in kHz.
+		printf("%s TUNE search-range=%d\n", warm ? "WARM" : "COLD", options.search_range);
+		cmdseq.add(DTV_ALGORITHM, warm ? ALGORITHM_WARM : ALGORITHM_COLD);
+		cmdseq.add(DTV_DELIVERY_SYSTEM, (int)options.delivery_system);
+		cmdseq.add(DTV_MODULATION, (int)options.modulation);
+		// cmdseq.add(DTV_VOLTAGE,  1-polarisation);
+		cmdseq.add(DTV_SEARCH_RANGE, options.search_range * 1000); // how far carrier may shift
+		if (options.symbol_rate > 0)
+			cmdseq.add(DTV_SYMBOL_RATE, options.symbol_rate * 1000); // controls tuner bandwidth
+		// cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS2);
+		cmdseq.add(DTV_FREQUENCY, frequency); // For satellite delivery systems, it is measured in kHz.
 
-		if(options.pls_codes.size()>0)
+		if (options.pls_codes.size() > 0)
 			cmdseq.add_pls_codes(DTV_PLS_SEARCH_LIST, &options.pls_codes[0], options.pls_codes.size());
 
-		if(options.end_pls_code> options.start_pls_code)
-			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code);
-		auto stream_id = options.pls_codes.size() >0 ?
-			(options.stream_id < 0  ? -1 : (options.stream_id&0xff) | options.pls_codes[0]) :
-			(options.stream_id < 0  ? -1 : (options.stream_id&0xff));
-		cmdseq.add(DTV_STREAM_ID,  stream_id);
+		if (options.end_pls_code > options.start_pls_code)
+			cmdseq.add_pls_range(DTV_PLS_SEARCH_RANGE, options.start_pls_code, options.end_pls_code,
+													 options.pls_search_timeout);
+		auto stream_id = options.pls_codes.size() > 0
+			? (options.stream_id < 0 ? -1 : (options.stream_id & 0xff) | options.pls_codes[0])
+			: (options.stream_id < 0 ? -1 : (options.stream_id & 0xff));
+		cmdseq.add(DTV_STREAM_ID, stream_id);
 	}
 
+	bool get_constellation = options.command == command_t::IQ;
+	auto num_constellation_samples = options.num_samples;
+	if (get_constellation) {
+		dtv_fe_constellation constellation;
+		constellation.num_samples = num_constellation_samples;
+		constellation.samples = nullptr;
+		constellation.method = CONSTELLATION_METHOD_DEFAULT;
+		constellation.constel_select = 1;
+		cmdseq.add(DTV_CONSTELLATION, constellation);
+	}
 	return cmdseq.tune(fefd);
 }
 
-int tune_next(int fefd)
-{
+int tune_next(int fefd) {
 	cmdseq_t cmdseq;
 
 	printf("NEXT SCAN\n");
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_SEARCH_NEXT);
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS);
+	cmdseq.add(DTV_ALGORITHM, ALGORITHM_SEARCH_NEXT);
+	// cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS);
 	return cmdseq.tune(fefd);
 }
-
-
-
-
-
-
-
-
 
 /** @brief generate and diseqc message for a committed or uncommitted switch
  * specification is available from http://www.eutelsat.com/
  * @param extra: extra bits to set polarisation and band; not sure if this does anything useful
  */
-int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned char extra, bool repeated)
-{
+int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned char extra, bool repeated) {
 
-	struct dvb_diseqc_master_cmd cmd{};
-	//Framing byte : Command from master, no reply required, first transmission : 0xe0
-	cmd.msg[0] = repeated ? 0xe1: 0xe0;
-	//Address byte : Any LNB, switcher or SMATV
+	struct dvb_diseqc_master_cmd cmd {};
+	// Framing byte : Command from master, no reply required, first transmission : 0xe0
+	cmd.msg[0] = repeated ? 0xe1 : 0xe0;
+	// Address byte : Any LNB, switcher or SMATV
 	cmd.msg[1] = 0x10;
-	//Command byte : Write to port group 1 (Uncommited switches)
-	//Command byte : Write to port group 0 (Committed switches) 0x38
-	if( switch_type == 'U' )
+	// Command byte : Write to port group 1 (Uncommited switches)
+	// Command byte : Write to port group 0 (Committed switches) 0x38
+	if (switch_type == 'U')
 		cmd.msg[2] = 0x39;
 	else if (switch_type == 'C')
 		cmd.msg[2] = 0x38;
-	else if (switch_type == 'X' ) {
+	else if (switch_type == 'X') {
 		cmd.msg[2] = 0x6B; // positioner goto
 		return 0;
 	}
 	/* param: high nibble: reset bits, low nibble set bits,
 	 * bits are: option, position, polarisation, band */
-	cmd.msg[3] =
-		0xf0 | (port & 0x0f) | extra;
+	cmd.msg[3] = 0xf0 | (port & 0x0f) | extra;
 
 	//
 	cmd.msg[4] = 0x00;
 	cmd.msg[5] = 0x00;
-	cmd.msg_len=4;
+	cmd.msg_len = 4;
 
 	int err;
-	if((err = ioctl(fefd, FE_DISEQC_SEND_MASTER_CMD, &cmd)))
-	{
+	if ((err = ioctl(fefd, FE_DISEQC_SEND_MASTER_CMD, &cmd))) {
 		printf("problem sending the DiseqC message\n");
 		return -1;
 	}
 	return 0;
 }
 
-int hi_lo(unsigned int frequency)
-{
-	return (frequency >= lnb_universal_slof);
-
-}
-
-
-
-bool tone_change_needed()
-{
-	return true;
-}
-
-bool voltage_change_needed()
-{
-	return true;
-}
-
-bool diseqc10_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.diseqc10 != last_confirmed_lnb.r.diseqc10) : true;
-#else
-	return true;
-#endif
-}
-
-
-bool mini_diseqc_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.mini_diseqc != last_confirmed_lnb.r.mini_diseqc) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc11_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.diseqc11 != last_confirmed_lnb.r.diseqc11) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc12_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.positioner_type != last_confirmed_lnb.r.positioner_type ||
-		 current_lnb.k.sat.position != last_confirmed_lnb.k.sat.position
-			) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc13_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.positioner_type != last_confirmed_lnb.r.positioner_type ||
-		 current_lnb.sat_pos != last_confirmed_lnb.sat_pos
-			) : true;
-#else
-	return true;
-#endif
-}
-
+int hi_lo(unsigned int frequency) { return (frequency >= lnb_universal_slof); }
 
 /** @brief Send a diseqc message and also control band/polarisation in the right order*
 		DiSEqC 1.0, which allows switching between up to 4 satellite sources
@@ -1141,18 +1009,17 @@ bool diseqc13_change_needed()
 
 
 */
-int diseqc(int fefd, bool pol_is_v, bool band_is_high)
-{
-/*
-	turn off tone to not interfere with diseqc
-*/
-	bool tone_off_called=false;
+int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
+	/*
+		turn off tone to not interfere with diseqc
+	*/
+	bool tone_off_called = false;
 	auto tone_off = [&]() {
 		int err;
-		if(tone_off_called)
+		if (tone_off_called)
 			return 0;
 		tone_off_called = true;
-		if((err = ioctl(fefd, FE_SET_TONE, SEC_TONE_OFF))) {
+		if ((err = ioctl(fefd, FE_SET_TONE, SEC_TONE_OFF))) {
 			printf("problem Setting the Tone OFF");
 			return -1;
 		}
@@ -1160,19 +1027,16 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 	};
 
 	int ret;
-	bool must_pause= false; //do we need a long pause before the next diseqc command?
+	bool must_pause = false; // do we need a long pause before the next diseqc command?
 	int diseqc_num_repeats = 2;
-	for(int repeated=0; repeated <= diseqc_num_repeats; ++repeated) {
+	for (int repeated = 0; repeated <= diseqc_num_repeats; ++repeated) {
 
-		for(const char& command: options.diseqc) {
-			switch(command) {
+		for (const char& command : options.diseqc) {
+			switch (command) {
 			case 'M': {
-				if(! mini_diseqc_change_needed())
-					continue;
-
-				if(tone_off()<0)
+				if (tone_off() < 0)
 					return -1;
-				msleep(must_pause ? 100: 15);
+				msleep(must_pause ? 100 : 15);
 				/*
 					tone burst commands deal with simpler equipment.
 					They use a 12.5 ms duration 22kHz burst for transmitting a 1
@@ -1181,61 +1045,50 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 					They allow swithcing between two satelites only
 				*/
 
-				must_pause = ! repeated;
-			}
-				break;
+				must_pause = !repeated;
+			} break;
 			case 'C': {
-				if( options.committed<0)
+				if (options.committed < 0)
 					continue;
-				if(! diseqc10_change_needed())
-					continue;
-				//committed
-					if(tone_off()<0)
-						return -1;
-					msleep(must_pause ? 100: 15);
-					assert(options.pol==1 || options.pol ==2);
-					int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
-					ret = send_diseqc_message(fefd, 'C', options.committed*4, extra,  repeated);
-					if(ret<0) {
-						printf("Sending Committed DiseqC message failed");
-					}
-					must_pause = ! repeated;
-			}
-				break;
+				// committed
+				if (tone_off() < 0)
+					return -1;
+				msleep(must_pause ? 100 : 15);
+				assert(options.pol == 1 || options.pol == 2);
+				int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
+				ret = send_diseqc_message(fefd, 'C', options.committed * 4, extra, repeated);
+				if (ret < 0) {
+					printf("Sending Committed DiseqC message failed");
+				}
+				must_pause = !repeated;
+			} break;
 			case 'U': {
-				if( options.uncommitted<0)
+				if (options.uncommitted < 0)
 					continue;
-				//uncommitted
-				if(! diseqc11_change_needed())
-					continue;
-				if(tone_off()<0)
+				// uncommitted
+				if (tone_off() < 0)
 					return -1;
 
-				msleep(must_pause ? 100: 15);
-				ret=send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
-				if(ret<0) {
+				msleep(must_pause ? 100 : 15);
+				ret = send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
+				if (ret < 0) {
 					printf("Sending Uncommitted DiseqC message failed");
 				}
-				must_pause = ! repeated;
-			}
-				break;
+				must_pause = !repeated;
+			} break;
 			case ' ': {
 				msleep(50);
-				must_pause =false;
+				must_pause = false;
+			} break;
 			}
-				break;
-			}
-			if(ret<0)
+			if (ret < 0)
 				return ret;
 		}
 	}
 	return tone_off_called ? 1 : 0;
-
 }
 
-
-int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
-{
+int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 
 	/*TODO: compute a new diseqc_command string based on
 		last tuned lnb, such that needless switching is avoided
@@ -1250,15 +1103,12 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 		13V = vertical or right-hand  18V = horizontal or low-hand
 		TODO: change this to 18 Volt when using positioner
 	*/
-	if(voltage_change_needed()) {;
-		fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
-		if((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
-			printf("problem Setting the Voltage\n");
-			return -1;
-		}
-	}
 
-	//TODO: diseqc_command_string should be read from lnb
+	fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
+	if ((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
+		printf("problem Setting the Voltage\n");
+		return -1;
+	}
 
 	bool band_is_high = hi_lo(frequency);
 
@@ -1267,15 +1117,15 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 	if(ret<0)
 		return ret;
 
-	bool tone_turned_off = ret>0;
+	bool tone_turned_off = ret > 0;
 
 	/*select the proper lnb band
 		22KHz: off = low band; on = high band
 	*/
-	if(tone_turned_off || tone_change_needed()) {
-		fe_sec_tone_mode_t tone =	band_is_high ? SEC_TONE_ON : SEC_TONE_OFF;
+	if (tone_turned_off) {
+		fe_sec_tone_mode_t tone = band_is_high ? SEC_TONE_ON : SEC_TONE_OFF;
 		ret = ioctl(fefd, FE_SET_TONE, tone);
-		if(ret < 0) {
+		if (ret < 0) {
 			printf("problem Setting the Tone back\n");
 			return -1;
 		}
@@ -1283,137 +1133,121 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 	return 0;
 }
 
-
-uint32_t scan_freq(int fefd, int efd,
-									 int frequency, bool pol_is_v)
-{
-	int ret=0;
+uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
+	int ret = 0;
 	printf("==========================\n");
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
+	while (1) {
+		struct dvb_frontend_event event {};
+		if (ioctl(fefd, FE_GET_EVENT, &event) < 0)
 			break;
 	}
 
 	ret = tune(fefd, frequency, pol_is_v);
-	if(ret!=0) {
+	if (ret != 0) {
 		printf("Tune FAILED\n");
 		exit(1);
 	}
 
-	struct dvb_frontend_event event{};
-	bool timedout=false;
-	bool locked=false;
-	int count=0;
-	while(count<3 && !timedout && !locked) {
+	struct dvb_frontend_event event {};
+	bool timedout = false;
+	bool locked = false;
+	int count = 0;
+	while (count < 3 && !timedout && !locked) {
 		struct epoll_event events[1]{{}};
 		auto s = epoll_wait(efd, events, 1, epoll_timeout);
-		if(s<0)
+		if (s < 0)
 			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if(s==0) {
-			//printf("TIMEOUT\n");
+		if (s == 0) {
 			auto old = frequency;
-			printf("\tTIMEOUT freq: old=%.3f new=%.3f\n", old/(float)FREQ_MULT, frequency/(float)FREQ_MULT);
-			timedout=true;
+			printf("\tTIMEOUT freq: old=%.3f new=%.3f\n", old / (float)FREQ_MULT, frequency / (float)FREQ_MULT);
+			timedout = true;
 			break;
 		}
 		int r = ioctl(fefd, FE_GET_EVENT, &event);
-		if(r<0)
+		if (r < 0)
 			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
 		else {
 			timedout = event.status & FE_TIMEDOUT;
 			locked = event.status & FE_HAS_VITERBI;
-			if(count>=1)
+			if (count >= 1)
 				printf("\tFE_GET_EVENT: stat=%d, timedout=%d locked=%d\n", event.status, timedout, locked);
 			count++;
 		}
 	}
 
-	if(timedout)
+	if (timedout)
 		return frequency;
 
-	if(check_lock_status(fefd)) {
+	if (check_lock_status(fefd)) {
 		auto old = frequency;
 		auto lo_frequency = get_lo_frequency(frequency);
-		auto [found_freq, bw2] =
-			getinfo(NULL, fefd, pol_is_v, frequency-options.search_range/2, lo_frequency);
+		auto [found_freq, bw2] = getinfo(NULL, fefd, pol_is_v, frequency - options.search_range / 2, lo_frequency);
 		frequency = found_freq + bw2;
-		frequency += options.search_range/2;
+		frequency += options.search_range / 2;
 	} else
 		printf("\tnot locked\n");
-	//printf("-------------------------------------------------\n");
 	return frequency;
 }
 
-
-
-
-
-
-int main_tune(int fefd)
-{
+int main_tune(int fefd) {
 	int uncommitted = 0;
-	assert(options.pol==1 || options.pol==2);
+	assert(options.pol == 1 || options.pol == 2);
 	bool pol_is_v = (options.pol == 2);
 	printf("Tuning\n");
 	clear(fefd);
-	int efd = epoll_create1 (0);	//create an epoll instance
+	int efd = epoll_create1(0); // create an epoll instance
 
 	struct epoll_event ep;
 	memset(&ep, 0, sizeof(ep));
 
-	ep.data.fd = fefd; //user data
-	ep.events = EPOLLIN|EPOLLERR|EPOLLHUP|EPOLLET; //edge triggered!
+	ep.data.fd = fefd;																	 // user data
+	ep.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET; // edge triggered!
 	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
-	if(s<0)
+	if (s < 0)
 		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s==0);
+	assert(s == 0);
 
 	scan_freq(fefd, efd, options.freq, pol_is_v);
-	for(;;)
+	for (;;)
 		sleep(100);
 	return 0;
 }
 
-
-int main_constellation(int fefd)
-{
+int main_constellation(int fefd) {
 	int uncommitted = 0;
 	bool pol_is_v = (options.pol == 2);
-	assert(options.pol==1 || options.pol==2);
+	assert(options.pol == 1 || options.pol == 2);
 	printf("Getting IQ samples\n");
 	clear(fefd);
-	int efd = epoll_create1 (0);	//create an epoll instance
+	int efd = epoll_create1(0); // create an epoll instance
 
 	struct epoll_event ep;
 	memset(&ep, 0, sizeof(ep));
 
-	ep.data.fd = fefd; //user data
-	ep.events = EPOLLIN|EPOLLERR|EPOLLHUP|EPOLLET; //edge triggered!
+	ep.data.fd = fefd;																	 // user data
+	ep.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET; // edge triggered!
 	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
-	if(s<0)
+	if (s < 0)
 		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s==0);
+	assert(s == 0);
 
 	scan_freq(fefd, efd, options.freq, pol_is_v);
-	get_constellation_samples(fefd, efd, pol_is_v, options.num_samples);
 	return 0;
 }
 
-int main(int argc, char**argv)
-{
-	if(options.parse_options(argc, argv)<0)
+int main(int argc, char** argv) {
+	if (options.parse_options(argc, argv) < 0)
 		return -1;
 
 	char dev[512];
-	sprintf(dev,"/dev/dvb/adapter%d/frontend%d", options.adapter_no, options.frontend_no);
+	sprintf(dev, "/dev/dvb/adapter%d/frontend%d", options.adapter_no, options.frontend_no);
 	int fefd = open_frontend(dev);
-	if(fefd<0) {
+	if (fefd < 0) {
 		exit(1);
 	}
 	get_frontend_info(fefd);
-	int ret=0;
-	switch(options.command) {
+	int ret = 0;
+	switch (options.command) {
 	case command_t::TUNE:
 		ret |= main_tune(fefd);
 		break;
