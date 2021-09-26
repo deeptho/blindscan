@@ -52,7 +52,7 @@ Scroll down to' Buidling TBS'Forked Driver' and follow these instructions in you
 ```mkdir tbsdriver
 cd tbsdriver
 git clone tbsdtv/media_build
-git clone --depth=1 deeptho/linux_media -b latest ./media
+git clone --depth=1 deeptho/linux_media -b deepthought ./media
 cd media_build
 make dir DIR=../media
 make allyesconfig
