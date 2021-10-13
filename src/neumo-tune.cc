@@ -509,7 +509,8 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 
 	printf("Symrate=%-5d ", currentsr / FREQ_MULT);
 
-	printf("Stream=%-5d pls_mode=%2d:%5d ", dtv_stream_id_prop & 0xff, (dtv_stream_id_prop >> 26) & 0x3,
+	printf("Stream=%-5d pls_mode=%2d:%5d ",
+				 (dtv_stream_id_prop & 0xff) == 0xff ? -1 : (dtv_stream_id_prop & 0xff), (dtv_stream_id_prop >> 26) & 0x3,
 				 (dtv_stream_id_prop >> 8) & 0x3FFFF);
 	int num_isi = 0;
 	for (int i = 0; i < 256; ++i) {
@@ -1036,7 +1037,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 			case 'M': {
 				if (tone_off() < 0)
 					return -1;
-				msleep(must_pause ? 100 : 15);
+				msleep(must_pause ? 100 : 30);
 				/*
 					tone burst commands deal with simpler equipment.
 					They use a 12.5 ms duration 22kHz burst for transmitting a 1
@@ -1053,7 +1054,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				// committed
 				if (tone_off() < 0)
 					return -1;
-				msleep(must_pause ? 100 : 15);
+				msleep(must_pause ? 100 : 30);
 				assert(options.pol == 1 || options.pol == 2);
 				int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
 				ret = send_diseqc_message(fefd, 'C', options.committed * 4, extra, repeated);
@@ -1069,7 +1070,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				if (tone_off() < 0)
 					return -1;
 
-				msleep(must_pause ? 100 : 15);
+				msleep(must_pause ? 100 : 30);
 				ret = send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
 				if (ret < 0) {
 					printf("Sending Uncommitted DiseqC message failed");
@@ -1085,6 +1086,8 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				return ret;
 		}
 	}
+	if( must_pause)
+		msleep(100);
 	return tone_off_called ? 1 : 0;
 }
 

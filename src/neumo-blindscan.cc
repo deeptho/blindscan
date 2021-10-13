@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2020-2021 deeptho@gmail.com
+ * Neumo dvb (C) 2019-2021 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -533,7 +533,8 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 
 	printf("Symrate=%-5d ", currentsr/FREQ_MULT);
 
-	printf("Stream=%-5d pls_mode=%2d:%5d ", dtv_stream_id_prop&0xff,
+	printf("Stream=%-5d pls_mode=%2d:%5d ",
+				 (dtv_stream_id_prop & 0xff) == 0xff ? -1 : (dtv_stream_id_prop & 0xff),
 				 (dtv_stream_id_prop>>26) & 0x3, (dtv_stream_id_prop>>8) & 0x3FFFF);
 	int num_isi=0;
 	for(int i=0; i< 256; ++i) {
@@ -1416,6 +1417,9 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				return ret;
 		}
 	}
+	if( must_pause)
+		msleep(100);
+
 #ifndef SET_VOLTAGE_TONE_DURING_TUNE
 	return tone_off_called ? 1 : 0;
 #else
