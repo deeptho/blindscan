@@ -458,8 +458,8 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 		{ .cmd = DTV_TONE },
 		{ .cmd = DTV_STREAM_ID },
 		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
-		{ .cmd = DTV_ISI_LIST },
 		{ .cmd = DTV_MATYPE},
+		{ .cmd = DTV_ISI_LIST },
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
 	struct dtv_properties cmdseq = {
@@ -494,11 +494,10 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
+	int matype = cmdseq.props[i++].u.data;
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
 
-	assert(cmdseq.props[i].u.buffer.len == 32);
-	uint32_t* matype_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
 
 	assert(i== cmdseq.num);
 //int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
@@ -551,20 +550,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 		printf("\n");
 	}
 
-	int num_matype=0;
-	for(int i=0; i< 256; ++i) {
-		int j = i/32;
-		auto mask = ((uint32_t)1)<< (i%32);
-		if(matype_bitset[j]& mask) {
-			if(num_matype==0)
-				printf("MATYPE list:");
-			printf(" %d", i);
-			num_matype++;
-		}
-	}
-	if(num_matype>0)  {
-		printf("\n");
-	}
+	printf("MATYPE: 0x%x\n", matype);
 
 	for(int i=0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_DECIBEL)

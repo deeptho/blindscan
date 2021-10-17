@@ -4,8 +4,8 @@ User space code for DVB blind scanning, getting spectra and getting IQ constella
 on tbs based DVB cards. Currently supports:
 * stid135-based cards: tbs6909x and tbs6903x
 * stv091x based cards: tbs5927
-* si2183 based cards: tbs6504.
-* tas2101 based cards: tbs5990
+* si2183 based cards (incomplete): tbs6504
+* tas2101 based cards (incomplete): tbs5990, tbs6904
 
 The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media

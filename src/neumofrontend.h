@@ -274,8 +274,7 @@ enum fe_sec_mini_cmd {
  * @FE_TIMEDOUT:	Fo lock within the last about 2 seconds.
  * @FE_REINIT:		Frontend was reinitialized, application is recommended
  *			to reset DiSEqC, tone and parameters.
- *
- * @FE_IDLE:		Frontend has gone to idle
+ * @FE_IDLE:		Frontend has gone idle
  *
  */
 enum fe_status {
