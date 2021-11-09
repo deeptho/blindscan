@@ -133,26 +133,64 @@ struct options_t {
 
 options_t options;
 
-uint32_t get_lo_frequency(uint32_t frequency) {
-	switch (options.lnb_type) {
+
+
+
+int band_for_freq(int32_t frequency)		{
+	switch(options.lnb_type) {
 	case UNIVERSAL_LNB:
 		if (frequency < lnb_universal_slof) {
-			return lnb_universal_lof_low;
+			return  0;
 		} else {
-			return lnb_universal_lof_high;
+			return 1;
 		}
 		break;
 
 	case C_LNB:
-		return lnb_c_lof;
+		return 0;
 		break;
 	}
+	return frequency;
+}
+
+int32_t driver_freq_for_freq(int32_t frequency)		{
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (frequency < lnb_universal_slof) {
+			return  frequency - lnb_universal_lof_low;
+		} else {
+			return frequency - lnb_universal_lof_high;
+		}
+		break;
+
+	case C_LNB:
+		return lnb_c_lof - frequency;
+		break;
+	}
+	return frequency;
+}
+
+uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (!band) {
+			return  frequency + lnb_universal_lof_low;
+		} else {
+			return frequency + lnb_universal_lof_high;
+		}
+		break;
+
+	case C_LNB:
+		return lnb_c_lof - frequency;
+		break;
+	}
+	return frequency;
 }
 
 void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
-	for (auto m : pls_entries) {
+	for(auto m: pls_entries) {
 		int mode;
 		int code;
 		bool inited = false;
@@ -882,8 +920,7 @@ int tune(int fefd, int frequency, bool pol_is_v) {
 int tune_it(int fefd, int frequency_, bool pol_is_v) {
 	cmdseq_t cmdseq;
 
-	auto lo_frequency = get_lo_frequency(frequency_);
-	auto frequency = (long)(frequency_ - (signed)lo_frequency);
+	auto frequency= driver_freq_for_freq(frequency_);
 	if (options.algo == algo_t::BLIND) {
 		printf("BLIND TUNE search-range=%d\n", options.search_range);
 		cmdseq.add(DTV_ALGORITHM, ALGORITHM_BLIND);
@@ -1137,7 +1174,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 }
 
 uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
-	int ret = 0;
+	int ret=0;
 	printf("==========================\n");
 	while (1) {
 		struct dvb_frontend_event event {};
@@ -1183,8 +1220,8 @@ uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
 
 	if (check_lock_status(fefd)) {
 		auto old = frequency;
-		auto lo_frequency = get_lo_frequency(frequency);
-		auto [found_freq, bw2] = getinfo(NULL, fefd, pol_is_v, frequency - options.search_range / 2, lo_frequency);
+		auto band  = band_for_freq(frequency);
+		auto [found_freq, bw2] = getinfo(NULL, fefd, pol_is_v, frequency - options.search_range / 2, band);
 		frequency = found_freq + bw2;
 		frequency += options.search_range / 2;
 	} else

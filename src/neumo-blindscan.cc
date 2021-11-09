@@ -137,43 +137,77 @@ options_t options;
 
 
 
-uint32_t get_lo_frequency(uint32_t frequency)		{
+
+int band_for_freq(int32_t frequency)		{
 	switch(options.lnb_type) {
 	case UNIVERSAL_LNB:
 		if (frequency < lnb_universal_slof) {
-			return  lnb_universal_lof_low;
+			return  0;
 		} else {
-			return lnb_universal_lof_high;
-	}
+			return 1;
+		}
 		break;
 
 	case C_LNB:
-		return lnb_c_lof;
+		return 0;
 		break;
 	}
+	return frequency;
 }
 
+int32_t driver_freq_for_freq(int32_t frequency)		{
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (frequency < lnb_universal_slof) {
+			return  frequency - lnb_universal_lof_low;
+		} else {
+			return frequency - lnb_universal_lof_high;
+		}
+		break;
 
-void options_t::parse_pls(const std::vector<std::string>& pls_entries)
-{
+	case C_LNB:
+		return lnb_c_lof - frequency;
+		break;
+	}
+	return frequency;
+}
+
+uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
+	switch(options.lnb_type) {
+	case UNIVERSAL_LNB:
+		if (!band) {
+			return  frequency + lnb_universal_lof_low;
+		} else {
+			return frequency + lnb_universal_lof_high;
+		}
+		break;
+
+	case C_LNB:
+		return lnb_c_lof - frequency;
+		break;
+	}
+	return frequency;
+}
+
+void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
 	for(auto m: pls_entries) {
 		int mode;
 		int code;
-		bool inited=false;
+		bool inited = false;
 		if (std::regex_match(m, base_match, base_regex)) {
 			// The first sub_match is the whole string; the next
 			// sub_match is the first parenthesized expression.
 			if (base_match.size() >= 2) {
 				std::ssub_match base_sub_match = base_match[1];
 				auto mode_ = base_sub_match.str();
-				if(!mode_.compare("ROOT"))
-					mode=0;
-				else if(!mode_.compare("GOLD"))
-					mode=1;
-				else if(!mode_.compare("COMBO"))
-					mode=2;
+				if (!mode_.compare("ROOT"))
+					mode = 0;
+				else if (!mode_.compare("GOLD"))
+					mode = 1;
+				else if (!mode_.compare("COMBO"))
+					mode = 2;
 				else {
 					printf("mode=/%s/\n", mode_.c_str());
 					throw std::runtime_error("Invalid PLS mode");
@@ -182,12 +216,12 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries)
 			if (base_match.size() >= 3) {
 				std::ssub_match base_sub_match = base_match[2];
 				auto code_ = base_sub_match.str();
-				if(sscanf(code_.c_str(), "%d", &code)!=1)
+				if (sscanf(code_.c_str(), "%d", &code) != 1)
 					throw std::runtime_error("Invalid PLS code");
 			}
-			if(!inited) {
+			if (!inited) {
 				pls_codes.clear();
-				inited=true;
+				inited = true;
 			}
 			pls_codes.push_back(make_code(mode, code));
 		}
@@ -440,7 +474,7 @@ static inline void msleep(uint32_t msec)
 
 #define CBAND_LOF 5150
 
-std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_freq_min, int lo_frequency)
+std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_freq_min, int band)
 {
 
 	struct dtv_property p[] = {
@@ -511,7 +545,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int currentrol;
 	int currentpil;
 
-	currentfreq = (dtv_frequency_prop  +(signed)lo_frequency);
+	currentfreq = freq_for_driver_freq(dtv_frequency_prop, band);
 	currentpol = dtv_voltage_prop;
 	currentsr = dtv_symbol_rate_prop;
 	currentsys = dtv_delivery_system_prop;
@@ -532,10 +566,15 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 
 	printf("Symrate=%-5d ", currentsr/FREQ_MULT);
 
-	printf("Stream=%-5d pls_mode=%2d:%5d ",
-				 (dtv_stream_id_prop & 0xff) == 0xff ? -1 : (dtv_stream_id_prop & 0xff),
-				 (dtv_stream_id_prop>>26) & 0x3, (dtv_stream_id_prop>>8) & 0x3FFFF);
-	int num_isi=0;
+	if ((dtv_stream_id_prop & 0xff) == 0xff) {
+		printf("Stream=%-5d ", -1);
+	} else {
+		printf("Stream=%-5d pls_mode=%2d:%5d ",
+					 (dtv_stream_id_prop & 0xff),
+					 (dtv_stream_id_prop >> 26) & 0x3,
+					 (dtv_stream_id_prop >> 8) & 0x3FFFF);
+	}
+		int num_isi=0;
 	for(int i=0; i< 256; ++i) {
 		int j = i/32;
 		auto mask = ((uint32_t)1)<< (i%32);
@@ -624,7 +663,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 
 	if(fpout) {
 		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n",
-						dtv_delivery_system_prop==6 ? 2:1, dtv_frequency_prop +(signed) lo_frequency,
+						dtv_delivery_system_prop==6 ? 2:1, freq_for_driver_freq(dtv_frequency_prop, band),
 						pol_is_v? 'V': 'H',
 						currentsr,
 						dtv_inner_fec_prop <8 ? dtv_inner_fec_prop:
@@ -649,7 +688,7 @@ int32_t rf_level[65536*4];
 int32_t rf_band[65536*4];
 struct spectral_peak_t candidates[512];
 
-void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int lo_frequency)
+void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int band)
 {
 	struct dtv_property p[] = {
 		{ .cmd = DTV_SPECTRUM},  // 0 DVB-S, 9 DVB-S2
@@ -697,7 +736,7 @@ void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int l
 			}
 		}
 
-		auto f = (spectrum.freq[i] + (signed)lo_frequency); //in kHz
+		auto f = freq_for_driver_freq(spectrum.freq[i], band); //in kHz
 		fprintf(*fpout, "%.6f %d %d\n", f*1e-3, spectrum.rf_level[i], candidate? candidate_symbol_rate : 0);
 	}
 	fflush(*fpout);
@@ -1005,12 +1044,10 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 
 	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
-
-	auto lo_frequency = get_lo_frequency(start_freq_);
-	assert(lo_frequency == get_lo_frequency(end_freq_-1)); //range must be withing a single band
-
-	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
-	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
+	auto start_freq= driver_freq_for_freq(start_freq_);
+	auto end_freq= driver_freq_for_freq(end_freq_);
+	if(start_freq < end_freq)
+		std::swap(start_freq, end_freq);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
 	/*Having this set through this api saves two additional ioctl calls (voltage and tone)
 		but we need to set voltage anyway to a value different from voltage_off to make diseqc
@@ -1058,12 +1095,10 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 
 	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
-
-	auto lo_frequency = get_lo_frequency(start_freq_);
-	assert(lo_frequency == get_lo_frequency(end_freq_-1)); //range must be withing a single band
-
-	auto start_freq= (long)(start_freq_-(signed)lo_frequency);
-	auto end_freq= (long)(end_freq_-(signed)lo_frequency);
+	auto start_freq= driver_freq_for_freq(start_freq_);
+	auto end_freq= driver_freq_for_freq(end_freq_);
+	if(start_freq < end_freq)
+		std::swap(start_freq, end_freq);
 
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
 
@@ -1117,20 +1152,14 @@ int driver_continue_blindscan(int fefd)
 }
 
 
-
-
-
-
 /*
 	pls_mode>=0 means that only this pls will be scanned (no unscrambled transponders)
 	Usually it is better to use pls_modes; these will be used in addition to unscrambled
- */
-int tune_it(int fefd, int frequency_, bool pol_is_v)
-{
+*/
+int tune_it(int fefd, int frequency_, bool pol_is_v) {
 	cmdseq_t cmdseq;
+	auto frequency= driver_freq_for_freq(frequency_);
 
-	auto lo_frequency = get_lo_frequency(frequency_);
-	auto frequency= (long)(frequency_-(signed)lo_frequency);
 	printf("BLIND SCAN search-range=%d\n", options.search_range);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
 	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
@@ -1473,9 +1502,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v)
 }
 
 
-uint32_t scan_freq(int fefd, int efd,
-									 int frequency, bool pol_is_v)
-{
+uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
 	int ret=0;
 	printf("==========================\n");
 	printf("SEARCH: %.3f-%.3f\n", (frequency-options.search_range/2)/1000., (frequency+options.search_range/2)/1000.);
@@ -1525,9 +1552,9 @@ uint32_t scan_freq(int fefd, int efd,
 
 	if(check_lock_status(fefd)) {
 		auto old = frequency;
-		auto lo_frequency = get_lo_frequency(frequency);
+		auto band  = band_for_freq(frequency);
 		auto [found_freq, bw2] =
-			getinfo(NULL, fefd, pol_is_v, frequency-options.search_range/2, lo_frequency);
+			getinfo(NULL, fefd, pol_is_v, frequency-options.search_range/2, band);
 		frequency = found_freq + bw2;
 		frequency += options.search_range/2;
 	} else
@@ -1544,14 +1571,14 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spect
 	printf("==========================\n");
 	printf("SEARCH: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
 				 pol_is_v? 'V':'H');
-	auto lo_frequency = get_lo_frequency(start_frequency);
+
 	while(1)  {
 		struct dvb_frontend_event event{};
 		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
 			break;
 	}
 	bool init =true;
-
+	int band = band_for_freq(start_frequency);
 	ret = driver_start_blindscan(fefd, start_frequency, end_frequency, pol_is_v, init);
 	if(ret!=0) {
 		printf("Tune FAILED\n");
@@ -1591,7 +1618,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spect
 			found = event.status & FE_HAS_LOCK; //flag indicating driver has found something
 			if((found||done) && first) {
 				get_spectrum(fpout_spectrum, fname_spectrum, fefd,
-										 pol_is_v, lo_frequency);
+										 pol_is_v, band);
 				first=false;
 			}
 			if(found || done)
@@ -1600,7 +1627,7 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spect
 
 			if(found) {
 				if (true||check_lock_status(fefd)) {
-					auto [found_freq, bw2] = getinfo(fpout_bs, fefd, pol_is_v, 0, lo_frequency);
+					auto [found_freq, bw2] = getinfo(fpout_bs, fefd, pol_is_v, 0, band);
 				} else
 					printf("\tnot locked\n");
 			}
@@ -1620,13 +1647,13 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char*fname_spect
 }
 
 uint32_t spectrum_band(FILE**fpout, const char*fname, int fefd, int efd,
-									 int start_frequency, int end_frequency, bool pol_is_v)
+											 int start_frequency, int end_frequency, bool pol_is_v, int band)
 {
 	int ret=0;
 	printf("==========================\n");
 	printf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
 				 pol_is_v? 'V':'H');
-	auto lo_frequency = get_lo_frequency(start_frequency);
+
 	while(1)  {
 		struct dvb_frontend_event event{};
 		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
@@ -1664,7 +1691,7 @@ uint32_t spectrum_band(FILE**fpout, const char*fname, int fefd, int efd,
 			printf("\tFE_GET_EVENT: stat=%d timedout=%d found=%d\n", event.status, timedout, found);
 			//assert(found);
 			if(found)
-				get_spectrum(fpout, fname, fefd, pol_is_v, lo_frequency);
+				get_spectrum(fpout, fname, fefd, pol_is_v, band);
 		}
 	}
 	return 0;
@@ -1782,12 +1809,12 @@ int main_spectrum(int fefd)
 		if(options.start_freq < lnb_universal_slof) {
 			//scanning (part of) low band
 			spectrum_band(&fpout, fname, fefd, efd, options.start_freq,
-										std::min(lnb_universal_slof, options.end_freq), pol_is_v);
+										std::min(lnb_universal_slof, options.end_freq), pol_is_v, 0);
 		}
 
 		if(options.end_freq > lnb_universal_slof) {
 			//scanning (part of) high band
-			spectrum_band(&fpout, fname, fefd, efd, lnb_universal_slof,  options.end_freq, pol_is_v);
+			spectrum_band(&fpout, fname, fefd, efd, lnb_universal_slof,  options.end_freq, pol_is_v, 1);
 		}
 		if(fpout)
 			fclose(fpout);
