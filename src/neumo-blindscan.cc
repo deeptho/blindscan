@@ -1046,7 +1046,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 
 	auto start_freq= driver_freq_for_freq(start_freq_);
 	auto end_freq= driver_freq_for_freq(end_freq_);
-	if(start_freq < end_freq)
+	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
 	/*Having this set through this api saves two additional ioctl calls (voltage and tone)
@@ -1097,7 +1097,7 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 
 	auto start_freq= driver_freq_for_freq(start_freq_);
 	auto end_freq= driver_freq_for_freq(end_freq_);
-	if(start_freq < end_freq)
+	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
