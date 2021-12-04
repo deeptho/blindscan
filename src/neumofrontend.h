@@ -31,6 +31,7 @@
 enum fe_extended_caps {
 	FE_EXTENDED_CAPS_IS_STUPID = 0x00,
 	FE_CAN_SPECTRUMSCAN        = 0x01,
+	FE_CAN_HR_SPECTRUMSCAN     = 0x08,
 	FE_CAN_IQ                  = 0x02,
 	FE_CAN_BLINDSEARCH         = 0x04,
 	FE_CAN_CONSTELLATION       = 0x10,
@@ -345,6 +346,26 @@ enum fe_code_rate {
 	FEC_5_11,
 	FEC_1_4,
 	FEC_1_3,
+	FEC_11_15,
+	FEC_11_20,
+	FEC_11_45,
+	FEC_13_18,
+	FEC_13_45,
+	FEC_14_45,
+	FEC_23_36,
+	FEC_25_36,
+	FEC_26_45,
+	FEC_28_45,
+	FEC_29_45,
+	FEC_31_45,
+	FEC_32_45,
+	FEC_4_15,
+	FEC_5_9,
+	FEC_7_15,
+	FEC_77_90,
+	FEC_7_9,
+	FEC_8_15,
+	FEC_9_20
 };
 
 /**
@@ -979,7 +1000,9 @@ struct dtv_fe_spectrum {
 	__u32 num_freq;
 	__u32 num_candidates;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
+	__u32 bandwidth;
 	__u8 spectrum_method;
+	__u8 is_highres;
 };
 
 

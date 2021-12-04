@@ -94,6 +94,7 @@ enum class command_t : int {
 struct options_t {
 	command_t command{command_t::SPECTRUM};
 	blindscan_method_t blindscan_method{SCAN_FREQ_PEAKS};
+	fe_delivery_system delivery_system{SYS_DVBS2};
 	lnb_type_t lnb_type{UNIVERSAL_LNB};
 	dtv_fe_spectrum_method spectrum_method{SPECTRUM_METHOD_SWEEP};
 	int freq = 10700000; //in kHz
@@ -131,6 +132,42 @@ struct options_t {
 	options_t() = default;
 	void parse_pls(const std::vector<std::string>& pls_entries);
 	int parse_options(int argc, char**argv);
+	bool is_sat() const {
+		switch(delivery_system) {
+		case SYS_DVBS2:
+		case SYS_DVBS:
+		case SYS_DSS:
+		case SYS_ISDBS:
+		case SYS_DVBS2X:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	bool is_cable() const {
+		switch(delivery_system) {
+		case SYS_DVBC_ANNEX_A:
+		case SYS_ISDBC:
+		case SYS_DVBC2:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	bool is_terrestrial() const {
+		switch(delivery_system) {
+		case SYS_DVBT:
+		case SYS_DVBT2:
+		case SYS_ISDBT:
+		case SYS_ATSC:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 };
 
 options_t options;
@@ -316,6 +353,8 @@ int options_t::parse_options(int argc, char**argv)
 
 	app.add_option("--blindscan-method", blindscan_method, "Blindscan method", true)
 		->transform(CLI::CheckedTransformer(blindscan_method_map, CLI::ignore_case));
+	app.add_option("--delsys", delivery_system, "Delivery system", true)
+		->transform(CLI::CheckedTransformer(delsys_map, CLI::ignore_case));
 
 	app.add_option("--lnb-type,L", lnb_type, "LNB Type", true)
 		->transform(CLI::CheckedTransformer(lnb_type_map, CLI::ignore_case));
@@ -372,21 +411,32 @@ int options_t::parse_options(int argc, char**argv)
 
 	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
 
-	switch(options.lnb_type)
-	{
-	case C_LNB:
+	if(options.is_sat()) {
+		switch(options.lnb_type) {
+		case C_LNB:
+			if(start_freq<0)
+				start_freq = 3400000; //in kHz;
+			if(end_freq<0)
+				end_freq = 4200000; //in kHz;
+			break;
+		case UNIVERSAL_LNB:
+			if(start_freq<0)
+				start_freq = 10700000; //in kHz;
+			if(end_freq<0)
+				end_freq = 12750000; //in kHz;
+			break;
+		};
+	} else if(options.is_terrestrial()) {
 		if(start_freq<0)
-			start_freq = 3400000; //in kHz;
+			start_freq = 40000; //in kHz;
 		if(end_freq<0)
-			end_freq = 4200000; //in kHz;
-		break;
-	case UNIVERSAL_LNB:
+			end_freq = 1002000; //in kHz;
+	} else if(options.is_cable()) {
 		if(start_freq<0)
-			start_freq = 10700000; //in kHz;
+			start_freq = 40000; //in kHz;
 		if(end_freq<0)
-			end_freq = 12750000; //in kHz;
-		break;
-	};
+			end_freq = 900000; //in kHz;
+	}
 
 	if(options.end_freq < options.start_freq)
 		options.end_freq = options.start_freq+1; //scan single freq
@@ -493,6 +543,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 		{ .cmd = DTV_STREAM_ID },
 		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
 		{ .cmd = DTV_MATYPE},
+		{ .cmd = DTV_MODCODE},
 		{ .cmd = DTV_ISI_LIST },
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
@@ -529,6 +580,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
 	int matype = cmdseq.props[i++].u.data;
+	int modcode = cmdseq.props[i++].u.data;
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*) cmdseq.props[i++].u.buffer.data; //TODO: we can only return 32 out of 256 entries...
 
@@ -590,6 +642,7 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	}
 
 	printf("MATYPE: 0x%x\n", matype);
+	printf("MODCODE: 0x%x\n", modcode);
 
 	for(int i=0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale== FE_SCALE_DECIBEL)
@@ -622,21 +675,8 @@ std::tuple<int, int> getinfo(FILE*fpout, int fefd, bool pol_is_v, int allowed_fr
 	default: printf("MOD(%d) ", dtv_modulation_prop); break;
 	}
 
-	switch (dtv_inner_fec_prop) {
-	case 0: printf("FEC_NONE ");  break;
-	case 1: printf("FEC_1_2  ");   break;
-	case 2: printf("FEC_2_3  ");   break;
-	case 3: printf("FEC_3_4  ");   break;
-	case 4: printf("FEC_4_5  ");   break;
-	case 5: printf("FEC_5_6  ");   break;
-	case 6: printf("FEC_6_7  ");   break;
-	case 7: printf("FEC_7_8  ");   break;
-	case 8: printf("FEC_8_9  ");   break;
-	case 9: printf("FEC_AUTO ");  break;
-	case 10: printf("FEC_3_5  ");  break;
-	case 11: printf("FEC_9_10 "); break;
-	default: printf("FEC (%d)  ", dtv_inner_fec_prop); break;
-	}
+	extern const char* fe_code_rates[];
+	printf("%s ", fe_code_rates[dtv_inner_fec_prop]);
 
 	switch (dtv_inversion_prop) {
 	case 0:  printf("INV_OFF ");  break;
@@ -1041,11 +1081,11 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 	cmdseq_t cmdseq;
 	if(clear(fefd)<0)
 		return -1;
+	if(options.is_sat())
+		do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
-	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
-
-	auto start_freq= driver_freq_for_freq(start_freq_);
-	auto end_freq= driver_freq_for_freq(end_freq_);
+	auto start_freq = driver_freq_for_freq(start_freq_);
+	auto end_freq = driver_freq_for_freq(end_freq_);
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
@@ -1063,14 +1103,21 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
 	cmdseq.add(DTV_TONE,  band_is_low ? SEC_TONE_OFF: SEC_TONE_ON);
 #endif
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_DVBS);
-	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
-	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
+	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) options.delivery_system);
+	if(options.is_sat()) {
+		cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
+		cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
+	} else {
+		cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq*1000 );
+		cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq*1000 );
+	}
 
 	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
 	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
-	cmdseq.add(DTV_SYMBOL_RATE,  2000*1000); //controls tuner bandwidth (in Hz)
-
+	if(options.is_sat())
+		cmdseq.add(DTV_SYMBOL_RATE,  2000*1000); //controls tuner bandwidth (in Hz)
+	else
+		cmdseq.add(DTV_SYMBOL_RATE,  8000*1000); //controls tuner bandwidth (in Hz)
 	return cmdseq.spectrum(fefd, method);
 }
 
@@ -1095,8 +1142,8 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 
 	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
-	auto start_freq= driver_freq_for_freq(start_freq_);
-	auto end_freq= driver_freq_for_freq(end_freq_);
+	auto start_freq = driver_freq_for_freq(start_freq_);
+	auto end_freq = driver_freq_for_freq(end_freq_);
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 
@@ -1184,17 +1231,6 @@ int tune_it(int fefd, int frequency_, bool pol_is_v) {
 
 	return cmdseq.tune(fefd);
 }
-
-int tune_next(int fefd)
-{
-	cmdseq_t cmdseq;
-
-	printf("NEXT SCAN\n");
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_SEARCH_NEXT);
-	//cmdseq.add(DTV_DELIVERY_SYSTEM,  SYS_DVBS);
-	return cmdseq.tune(fefd);
-}
-
 
 
 
