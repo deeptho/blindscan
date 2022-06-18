@@ -280,13 +280,13 @@ enum fe_sec_mini_cmd {
  */
 enum fe_status {
 	FE_NONE			= 0x00,
-	FE_HAS_SIGNAL		= 0x01,
+	FE_HAS_SIGNAL		= 0x01, //not useful
 	FE_HAS_CARRIER		= 0x02,
 	FE_HAS_VITERBI		= 0x04,
 	FE_HAS_SYNC		= 0x08,
 	FE_HAS_LOCK		= 0x10,
 	FE_TIMEDOUT		= 0x20,
-	FE_REINIT		= 0x40,
+	FE_HAS_TIMING_LOCK		= 0x40, //was FE_REINIT; not used anyway
 	FE_IDLE		= 0x80,
 };
 
@@ -638,7 +638,8 @@ enum fe_interleaving {
 #define DTV_MAX_SYMBOL_RATE	85 //for blindscan
 #define DTV_CONSTELLATION 86
 #define DTV_HEARTBEAT 87
-#define DTV_MAX_COMMAND	 DTV_HEARTBEAT
+#define DTV_BITRATE 88
+#define DTV_MAX_COMMAND	 DTV_BITRATE
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
 #define DTV_STOP 1
@@ -1000,7 +1001,6 @@ struct dtv_fe_spectrum {
 	__u32 num_freq;
 	__u32 num_candidates;
 	__u32 scale; //FE_SCALE_DECIBEL; or FE_SCALE_RELATIVE
-	__u32 bandwidth;
 	__u8 spectrum_method;
 	__u8 is_highres;
 };
