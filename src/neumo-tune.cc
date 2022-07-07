@@ -68,7 +68,8 @@ static constexpr int make_code(int pls_mode, int pls_code, int timeout = 0) {
 static constexpr int lnb_universal_slof = 11700 * 1000UL;
 static constexpr int lnb_universal_lof_low = 9750 * 1000UL;
 static constexpr int lnb_universal_lof_high = 10600 * 1000UL;
-
+static constexpr int lnb_wideband_lof = 10400 * 1000UL;
+static constexpr int lnb_wideband_uk_lof = 10410 * 1000UL;
 static constexpr int lnb_c_lof = 5150 * 1000UL;
 
 enum blindscan_method_t {
@@ -78,6 +79,8 @@ enum blindscan_method_t {
 
 enum lnb_type_t {
 	UNIVERSAL_LNB = 1,
+	WIDEBAND_LNB,
+	WIDEBAND_UK_LNB,
 	C_LNB,
 };
 
@@ -133,9 +136,6 @@ struct options_t {
 
 options_t options;
 
-
-
-
 int band_for_freq(int32_t frequency)		{
 	switch(options.lnb_type) {
 	case UNIVERSAL_LNB:
@@ -146,11 +146,19 @@ int band_for_freq(int32_t frequency)		{
 		}
 		break;
 
+	case WIDEBAND_LNB:
+		return 0;
+		break;
+
+	case WIDEBAND_UK_LNB:
+		return 0;
+		break;
+
 	case C_LNB:
 		return 0;
 		break;
 	}
-	return frequency;
+	return 0;
 }
 
 int32_t driver_freq_for_freq(int32_t frequency)		{
@@ -161,6 +169,13 @@ int32_t driver_freq_for_freq(int32_t frequency)		{
 		} else {
 			return frequency - lnb_universal_lof_high;
 		}
+		break;
+
+	case WIDEBAND_LNB:
+		return frequency - lnb_wideband_lof;
+		break;
+	case WIDEBAND_UK_LNB:
+		return frequency - lnb_wideband_uk_lof;
 		break;
 
 	case C_LNB:
@@ -179,7 +194,12 @@ uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
 			return frequency + lnb_universal_lof_high;
 		}
 		break;
-
+	case WIDEBAND_LNB:
+		return frequency + lnb_wideband_lof;
+		break;
+	case WIDEBAND_UK_LNB:
+		return frequency + lnb_wideband_uk_lof;
+		break;
 	case C_LNB:
 		return lnb_c_lof - frequency;
 		break;
@@ -190,7 +210,7 @@ uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
 void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 	const std::regex base_regex("(ROOT|GOLD|COMBO)\\+([0-9]{1,6})");
 	std::smatch base_match;
-	for(auto m: pls_entries) {
+	for (auto m : pls_entries) {
 		int mode;
 		int code;
 		bool inited = false;
@@ -704,14 +724,14 @@ void save_constellation_samples(bool pol_is_v, struct dtv_fe_constellation& cs) 
 }
 
 void close_frontend(int fefd);
-int get_extended_frontend_info(int fefd)
-{
-	struct dvb_frontend_extended_info fe_info{}; //front_end_info
-	//auto now =time(NULL);
-	//This does not produce anything useful. Driver would have to be adapted
+
+int get_extended_frontend_info(int fefd) {
+	struct dvb_frontend_extended_info fe_info {}; // front_end_info
+	// auto now =time(NULL);
+	// This does not produce anything useful. Driver would have to be adapted
 
 	int res;
-	if ( (res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)){
+	if ((res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)) {
 		printf("FE_GET_EXTENDED_INFO failed: blindscan drivers probably not installed\n");
 		close_frontend(fefd);
 		return -1;
@@ -726,20 +746,15 @@ int get_extended_frontend_info(int fefd)
 		fe_info.caps:
 	*/
 
-
 	struct dtv_property properties[16];
 	memset(properties, 0, sizeof(properties));
-	unsigned int i=0;
-	properties[i++].cmd      = DTV_ENUM_DELSYS;
-	properties[i++].cmd      = DTV_DELIVERY_SYSTEM;
-	struct dtv_properties props ={
-		.num=i,
-		.props = properties
-	};
+	unsigned int i = 0;
+	properties[i++].cmd = DTV_ENUM_DELSYS;
+	properties[i++].cmd = DTV_DELIVERY_SYSTEM;
+	struct dtv_properties props = {.num = i, .props = properties};
 
 	if ((ioctl(fefd, FE_GET_PROPERTY, &props)) == -1) {
 		printf("FE_GET_PROPERTY failed: %s", strerror(errno));
-		//set_interrupted(ERROR_TUNE<<8);
 		close_frontend(fefd);
 		return -1;
 	}
@@ -1213,7 +1228,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 }
 
 uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
-	int ret=0;
+	int ret = 0;
 	printf("==========================\n");
 	while (1) {
 		struct dvb_frontend_event event {};

@@ -168,9 +168,6 @@ struct options_t {
 
 options_t options;
 
-
-
-
 int band_for_freq(int32_t frequency)		{
 	switch(options.lnb_type) {
 	case UNIVERSAL_LNB:
@@ -181,11 +178,19 @@ int band_for_freq(int32_t frequency)		{
 		}
 		break;
 
+	case WIDEBAND_LNB:
+		return 0;
+		break;
+
+	case WIDEBAND_UK_LNB:
+		return 0;
+		break;
+
 	case C_LNB:
 		return 0;
 		break;
 	}
-	return frequency;
+	return 0;
 }
 
 int32_t driver_freq_for_freq(int32_t frequency)		{
@@ -196,6 +201,14 @@ int32_t driver_freq_for_freq(int32_t frequency)		{
 		} else {
 			return frequency - lnb_universal_lof_high;
 		}
+		break;
+
+	case WIDEBAND_LNB:
+		return frequency - lnb_wideband_lof;
+		break;
+
+	case WIDEBAND_UK_LNB:
+		return frequency - lnb_wideband_uk_lof;
 		break;
 
 	case C_LNB:
@@ -213,6 +226,14 @@ uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
 		} else {
 			return frequency + lnb_universal_lof_high;
 		}
+		break;
+
+	case WIDEBAND_LNB:
+		return frequency + lnb_wideband_lof;
+		break;
+
+	case WIDEBAND_UK_LNB:
+		return frequency + lnb_wideband_uk_lof;
 		break;
 
 	case C_LNB:
@@ -373,6 +394,12 @@ int options_t::parse_options(int argc, char** argv) {
 			if(end_freq<0)
 				end_freq = 12750000; //in kHz;
 			break;
+		case WIDEBAND_LNB:
+			start_freq = 10700000; //in kHz;
+			break;
+		case WIDEBAND_UK_LNB:
+			start_freq = 10700000; //in kHz;
+			break;
 		};
 	} else if(options.is_terrestrial()) {
 		if(start_freq<0)
@@ -469,23 +496,22 @@ static inline void msleep(uint32_t msec) {
 std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_freq_min, int band) {
 
 	struct dtv_property p[] = {
-		{ .cmd = DTV_DELIVERY_SYSTEM},  // 0 DVB-S, 9 DVB-S2
-		{ .cmd = DTV_FREQUENCY },
-		{ .cmd = DTV_VOLTAGE },         // 0 - 13V Vertical, 1 - 18V Horizontal, 2 - Voltage OFF
-		{ .cmd = DTV_SYMBOL_RATE },
-		{ .cmd = DTV_STAT_SIGNAL_STRENGTH	},
-		{ .cmd = DTV_STAT_CNR	},
-		{ .cmd = DTV_MODULATION },      // 5 - QPSK, 6 - 8PSK
-		{ .cmd = DTV_INNER_FEC },
-		{ .cmd = DTV_INVERSION },
-		{ .cmd = DTV_ROLLOFF },
-		{ .cmd = DTV_PILOT },            // 0 - ON, 1 - OFF
-		{ .cmd = DTV_TONE },
-		{ .cmd = DTV_STREAM_ID },
-		{ .cmd = DTV_SCRAMBLING_SEQUENCE_INDEX },
-		{ .cmd = DTV_MATYPE},
-		{ .cmd = DTV_MODCODE},
-		{ .cmd = DTV_ISI_LIST },
+		{.cmd = DTV_DELIVERY_SYSTEM}, // 0 DVB-S, 9 DVB-S2
+		{.cmd = DTV_FREQUENCY},
+		{.cmd = DTV_VOLTAGE}, // 0 - 13V Vertical, 1 - 18V Horizontal, 2 - Voltage OFF
+		{.cmd = DTV_SYMBOL_RATE},
+		{.cmd = DTV_STAT_SIGNAL_STRENGTH},
+		{.cmd = DTV_STAT_CNR},
+		{.cmd = DTV_MODULATION}, // 5 - QPSK, 6 - 8PSK
+		{.cmd = DTV_INNER_FEC},
+		{.cmd = DTV_INVERSION},
+		{.cmd = DTV_ROLLOFF},
+		{.cmd = DTV_PILOT}, // 0 - ON, 1 - OFF
+		{.cmd = DTV_TONE},
+		{.cmd = DTV_STREAM_ID},
+		{.cmd = DTV_SCRAMBLING_SEQUENCE_INDEX},
+		{.cmd = DTV_ISI_LIST},
+		{.cmd = DTV_MATYPE},
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
 	struct dtv_properties cmdseq = {.num = sizeof(p) / sizeof(p[0]), .props = p};
@@ -517,11 +543,13 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
-	int matype = cmdseq.props[i++].u.data;
-	int modcode = cmdseq.props[i++].u.data;
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256
 																																		 // entries...
+
+	assert(cmdseq.props[i].u.buffer.len == 32);
+	uint32_t* matype_bitset =
+		(uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256 entries...
 
 	assert(i == cmdseq.num);
 	// int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
@@ -555,20 +583,16 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 
 	printf("Symrate=%-5d ", currentsr / FREQ_MULT);
 
-	if ((dtv_stream_id_prop & 0xff) == 0xff) {
-		printf("Stream=%-5d ", -1);
-	} else {
-		printf("Stream=%-5d pls_mode=%2d:%5d ",
-					 (dtv_stream_id_prop & 0xff),
-					 (dtv_stream_id_prop >> 26) & 0x3,
-					 (dtv_stream_id_prop >> 8) & 0x3FFFF);
-	}
-		int num_isi=0;
-	for(int i=0; i< 256; ++i) {
-		int j = i/32;
-		auto mask = ((uint32_t)1)<< (i%32);
-		if(isi_bitset[j]& mask) {
-			if(num_isi==0)
+	printf("Stream=%-5d pls_mode=%2d:%5d ",
+				 (dtv_stream_id_prop & 0xff) == 0xff ? -1 : (dtv_stream_id_prop & 0xff),
+				 (dtv_stream_id_prop >> 26) & 0x3,
+				 (dtv_stream_id_prop >> 8) & 0x3FFFF);
+	int num_isi = 0;
+	for (int i = 0; i < 256; ++i) {
+		int j = i / 32;
+		auto mask = ((uint32_t)1) << (i % 32);
+		if (isi_bitset[j] & mask) {
+			if (num_isi == 0)
 				printf("ISI list:");
 			printf(" %d", i);
 			num_isi++;
@@ -578,8 +602,20 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 		printf("\n");
 	}
 
-	printf("MATYPE: 0x%x\n", matype);
-	printf("MODCODE: 0x%x\n", modcode);
+	int num_matype = 0;
+	for (int i = 0; i < 256; ++i) {
+		int j = i / 32;
+		auto mask = ((uint32_t)1) << (i % 32);
+		if (matype_bitset[j] & mask) {
+			if (num_matype == 0)
+				printf("MATYPE list:");
+			printf(" %d", i);
+			num_matype++;
+		}
+	}
+	if (num_matype > 0) {
+		printf("\n");
+	}
 
 	for (int i = 0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_DECIBEL)
@@ -660,50 +696,55 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	}
 
 	switch (dtv_rolloff_prop) {
-	case 0:  printf("ROLL_35\n");   break;
-	case 1:  printf("ROLL_20\n");   break;
-	case 2:  printf("ROLL_25\n");   break;
-	case 3:  printf("ROLL_AUTO\n"); break;
-	default: printf("ROLL(%d)\n", dtv_rolloff_prop); break;
+	case 0:
+		printf("ROLL_35\n");
+		break;
+	case 1:
+		printf("ROLL_20\n");
+		break;
+	case 2:
+		printf("ROLL_25\n");
+		break;
+	case 3:
+		printf("ROLL_AUTO\n");
+		break;
+	default:
+		printf("ROLL(%d)\n", dtv_rolloff_prop);
+		break;
 	}
 
-	if(fpout) {
-		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n",
-						dtv_delivery_system_prop==6 ? 2:1, freq_for_driver_freq(dtv_frequency_prop, band),
-						pol_is_v? 'V': 'H',
-						currentsr,
-						dtv_inner_fec_prop <8 ? dtv_inner_fec_prop:
-						dtv_inner_fec_prop == FEC_3_5 ? 3:
-						dtv_inner_fec_prop == FEC_9_10 ? 9:
-						dtv_inner_fec_prop == FEC_2_5 ? 2: 0,
-						dtv_inner_fec_prop <8 ? (dtv_inner_fec_prop+1):
-						dtv_inner_fec_prop == FEC_3_5 ? 5:
-						dtv_inner_fec_prop == FEC_9_10 ? 10:
-						dtv_inner_fec_prop == FEC_2_5 ? 5 :0,
-						dtv_modulation_prop ==0? "QPSK":
-						dtv_modulation_prop ==9? "8PSK": "AUTO"
-			);
+	if (fpout) {
+		fprintf(fpout, "S%d %d %c %d %d/%d AUTO %s \n", dtv_delivery_system_prop == 6 ? 2 : 1,
+						freq_for_driver_freq(dtv_frequency_prop, band), pol_is_v ? 'V' : 'H', currentsr,
+						dtv_inner_fec_prop < 8					 ? dtv_inner_fec_prop
+						: dtv_inner_fec_prop == FEC_3_5	 ? 3
+						: dtv_inner_fec_prop == FEC_9_10 ? 9
+						: dtv_inner_fec_prop == FEC_2_5	 ? 2
+						: 0,
+						dtv_inner_fec_prop < 8					 ? (dtv_inner_fec_prop + 1)
+						: dtv_inner_fec_prop == FEC_3_5	 ? 5
+						: dtv_inner_fec_prop == FEC_9_10 ? 10
+						: dtv_inner_fec_prop == FEC_2_5	 ? 5
+						: 0,
+						dtv_modulation_prop == 0	 ? "QPSK"
+						: dtv_modulation_prop == 9 ? "8PSK"
+						: "AUTO");
 		fflush(fpout);
 	}
 
 	return std::make_tuple(currentfreq, (135 * (currentsr / FREQ_MULT)) / (2 * 100));
 }
 
-uint32_t freq[65536*4];
-int32_t rf_level[65536*4];
-int32_t rf_band[65536*4];
+uint32_t freq[65536 * 4];
+int32_t rf_level[65536 * 4];
 struct spectral_peak_t candidates[512];
 
-void get_spectrum(FILE** fpout, const char*fname, int fefd, bool pol_is_v, int band)
-{
+void get_spectrum(FILE** fpout, const char* fname, int fefd, bool pol_is_v, int band) {
 	struct dtv_property p[] = {
 		{.cmd = DTV_SPECTRUM}, // 0 DVB-S, 9 DVB-S2
 		//		{ .cmd = DTV_BANDWIDTH_HZ },    // Not used for DVB-S
 	};
-	struct dtv_properties cmdseq = {
-		.num = sizeof(p)/sizeof(p[0]),
-		.props = p
-	};
+	struct dtv_properties cmdseq = {.num = sizeof(p) / sizeof(p[0]), .props = p};
 	decltype(cmdseq.props[0].u.spectrum) spectrum{};
 	spectrum.num_freq = 65536;
 	spectrum.freq = &freq[0];
@@ -830,11 +871,10 @@ void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples
 
 void close_frontend(int fefd);
 
-int get_extended_frontend_info(int fefd)
-{
-	struct dvb_frontend_extended_info fe_info{}; //front_end_info
-	//auto now =time(NULL);
-	//This does not produce anything useful. Driver would have to be adapted
+int get_extended_frontend_info(int fefd) {
+	struct dvb_frontend_extended_info fe_info {}; // front_end_info
+	// auto now =time(NULL);
+	// This does not produce anything useful. Driver would have to be adapted
 
 	int res;
 	if ( (res = ioctl(fefd, FE_GET_EXTENDED_INFO, &fe_info) < 0)){
@@ -1120,11 +1160,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 	return cmdseq.spectrum(fefd, method);
 }
 
-
-
-int driver_start_constellation(int fefd, int num_samples, int constel_select,
-															 dtv_fe_constellation_method method)
-{
+int driver_start_constellation(int fefd, int num_samples, int constel_select, dtv_fe_constellation_method method) {
 	cmdseq_t cmdseq;
 	if (clear(fefd) < 0)
 		return -1;
@@ -1144,17 +1180,17 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 
-	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) SYS_AUTO);
+	cmdseq.add(DTV_DELIVERY_SYSTEM, (int)SYS_AUTO);
 
-	cmdseq.add(DTV_ALGORITHM,  ALGORITHM_BLIND);
-	//cmdseq.add(DTV_ALGORITHM,  ALGORITHM_NEXT);
-	cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq);
-	cmdseq.add(DTV_SCAN_END_FREQUENCY,  end_freq);
+	cmdseq.add(DTV_ALGORITHM, ALGORITHM_BLIND);
+	// cmdseq.add(DTV_ALGORITHM,  ALGORITHM_NEXT);
+	cmdseq.add(DTV_SCAN_START_FREQUENCY, start_freq);
+	cmdseq.add(DTV_SCAN_END_FREQUENCY, end_freq);
 
-	cmdseq.add(DTV_SCAN_RESOLUTION,  options.spectral_resolution); //in kHz
-	cmdseq.add(DTV_SCAN_FFT_SIZE,  options.fft_size); //in kHz
+	cmdseq.add(DTV_SCAN_RESOLUTION, options.spectral_resolution); // in kHz
+	cmdseq.add(DTV_SCAN_FFT_SIZE, options.fft_size);							// in kHz
 
-	cmdseq.add(DTV_VOLTAGE,  1 - pol_is_v);
+	cmdseq.add(DTV_VOLTAGE, 1 - pol_is_v);
 #if 1
 	cmdseq.add(DTV_SEARCH_RANGE, options.search_range * 1000);			 // how far carrier may shift
 	cmdseq.add(DTV_MAX_SYMBOL_RATE, options.max_symbol_rate * 1000); // controls blindscan search range  on stv091x
@@ -1224,8 +1260,6 @@ int tune_it(int fefd, int frequency_, bool pol_is_v) {
 	return cmdseq.tune(fefd);
 }
 
-
-
 /** @brief generate and diseqc message for a committed or uncommitted switch
  * specification is available from http://www.eutelsat.com/
  * @param extra: extra bits to set polarisation and band; not sure if this does anything useful
@@ -1264,80 +1298,7 @@ int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned
 	return 0;
 }
 
-int hi_lo(unsigned int frequency)
-{
-	return (frequency >= lnb_universal_slof);
-
-}
-
-
-
-bool tone_change_needed()
-{
-	return true;
-}
-
-bool voltage_change_needed()
-{
-	return true;
-}
-
-bool diseqc10_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.diseqc10 != last_confirmed_lnb.r.diseqc10) : true;
-#else
-	return true;
-#endif
-}
-
-
-bool mini_diseqc_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.mini_diseqc != last_confirmed_lnb.r.mini_diseqc) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc11_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.diseqc11 != last_confirmed_lnb.r.diseqc11) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc12_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.positioner_type != last_confirmed_lnb.r.positioner_type ||
-		 current_lnb.k.sat.position != last_confirmed_lnb.k.sat.position
-			) : true;
-#else
-	return true;
-#endif
-}
-
-bool diseqc13_change_needed()
-{
-#ifdef TODO
-	return last_confirmed_lnb_valid  ?
-		(current_lnb.r.positioner_type != last_confirmed_lnb.r.positioner_type ||
-		 current_lnb.sat_pos != last_confirmed_lnb.sat_pos
-			) : true;
-#else
-	return true;
-#endif
-}
-
-
+int hi_lo(unsigned int frequency) { return (frequency >= lnb_universal_slof); }
 /** @brief Send a diseqc message and also control band/polarisation in the right order*
 		DiSEqC 1.0, which allows switching between up to 4 satellite sources
 		DiSEqC 1.1, which allows switching between up to 16 sources
@@ -1385,8 +1346,6 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 		for (const char& command : options.diseqc) {
 			switch (command) {
 			case 'M': {
-				if(! mini_diseqc_change_needed())
-					continue;
 #ifndef SET_VOLTAGE_TONE_DURING_TUNE
 				if (tone_off() < 0)
 					return -1;
@@ -1403,11 +1362,9 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				must_pause = !repeated;
 			} break;
 			case 'C': {
-				if( options.committed<0)
+				if (options.committed < 0)
 					continue;
-				if(! diseqc10_change_needed())
-					continue;
-				//committed
+				// committed
 #ifndef SET_VOLTAGE_TONE_DURING_TUNE
 				if (tone_off() < 0)
 					return -1;
@@ -1425,8 +1382,6 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 					continue;
 				// uncommitted
 
-				if(! diseqc11_change_needed())
-					continue;
 #ifndef SET_VOLTAGE_TONE_DURING_TUNE
 				if (tone_off() < 0)
 					return -1;
@@ -1475,12 +1430,11 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 		13V = vertical or right-hand  18V = horizontal or low-hand
 		TODO: change this to 18 Volt when using positioner
 	*/
-	if(voltage_change_needed()) {;
-		fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
-		if((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
-			printf("problem Setting the Voltage\n");
-			return -1;
-		}
+
+	fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
+	if ((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
+		printf("problem Setting the Voltage\n");
+		return -1;
 	}
 
 #endif
@@ -1501,8 +1455,8 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 	/*select the proper lnb band
 		22KHz: off = low band; on = high band
 	*/
-	if(tone_turned_off || tone_change_needed()) {
-		fe_sec_tone_mode_t tone =	band_is_high ? SEC_TONE_ON : SEC_TONE_OFF;
+	if (tone_turned_off) {
+		fe_sec_tone_mode_t tone = band_is_high ? SEC_TONE_ON : SEC_TONE_OFF;
 		ret = ioctl(fefd, FE_SET_TONE, tone);
 		if (ret < 0) {
 			printf("problem Setting the Tone back\n");
@@ -1540,8 +1494,8 @@ uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
 		auto s = epoll_wait(efd, events, 1, epoll_timeout);
 		if (s < 0)
 			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if(s==0) {
-			//printf("TIMEOUT\n");
+		if (s == 0) {
+			// printf("TIMEOUT\n");
 			auto old = frequency;
 			printf("\tTIMEOUT freq: old=%.3f new=%.3f\n", old / (float)FREQ_MULT, frequency / (float)FREQ_MULT);
 			timedout = true;
@@ -1568,7 +1522,7 @@ uint32_t scan_freq(int fefd, int efd, int frequency, bool pol_is_v) {
 		auto [found_freq, bw2] =
 			getinfo(NULL, fefd, pol_is_v, frequency-options.search_range/2, band);
 		frequency = found_freq + bw2;
-		frequency += options.search_range/2;
+		frequency += options.search_range / 2;
 	} else
 		printf("\tnot locked\n");
 	// printf("-------------------------------------------------\n");
@@ -1579,15 +1533,14 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char* fname_spec
 									 int start_frequency, int end_frequency, bool pol_is_v) {
 	int ret = 0;
 	printf("==========================\n");
-	printf("SEARCH: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
-				 pol_is_v? 'V':'H');
+	printf("SEARCH: %.3f-%.3f pol=%c\n", start_frequency / 1000., end_frequency / 1000., pol_is_v ? 'V' : 'H');
 
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
+	while (1) {
+		struct dvb_frontend_event event {};
+		if (ioctl(fefd, FE_GET_EVENT, &event) < 0)
 			break;
 	}
-	bool init =true;
+	bool init = true;
 	int band = band_for_freq(start_frequency);
 	ret = driver_start_blindscan(fefd, start_frequency, end_frequency, pol_is_v, init);
 	if (ret != 0) {
@@ -1623,13 +1576,11 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char* fname_spec
 			bool has_lock = event.status & FE_HAS_LOCK;
 			timedout = event.status & FE_TIMEDOUT;
 
-
-			done = event.status & FE_TIMEDOUT;  //fake flag indicating that driver algo has finished with complete scan
-			found = event.status & FE_HAS_LOCK; //flag indicating driver has found something
-			if((found||done) && first) {
-				get_spectrum(fpout_spectrum, fname_spectrum, fefd,
-										 pol_is_v, band);
-				first=false;
+			done = event.status & FE_TIMEDOUT;	// fake flag indicating that driver algo has finished with complete scan
+			found = event.status & FE_HAS_LOCK; // flag indicating driver has found something
+			if ((found || done) && first) {
+				get_spectrum(fpout_spectrum, fname_spectrum, fefd, pol_is_v, band);
+				first = false;
 			}
 			if (found || done)
 				printf("\tFE_GET_EVENT: stat=%d, signal=%d carrier=%d viterbi=%d sync=%d timedout=%d locked=%d\n", event.status,
@@ -1656,17 +1607,15 @@ uint32_t scan_band(FILE* fpout_bs, FILE** fpout_spectrum, const char* fname_spec
 	return 0;
 }
 
-uint32_t spectrum_band(FILE**fpout, const char*fname, int fefd, int efd,
-											 int start_frequency, int end_frequency, bool pol_is_v, int band)
-{
-	int ret=0;
+uint32_t spectrum_band(FILE** fpout, const char* fname, int fefd, int efd, int start_frequency, int end_frequency,
+											 bool pol_is_v, int band) {
+	int ret = 0;
 	printf("==========================\n");
-	printf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency/1000., end_frequency/1000.,
-				 pol_is_v? 'V':'H');
+	printf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency / 1000., end_frequency / 1000., pol_is_v ? 'V' : 'H');
 
-	while(1)  {
-		struct dvb_frontend_event event{};
-		if (ioctl(fefd, FE_GET_EVENT, &event)<0)
+	while (1) {
+		struct dvb_frontend_event event {};
+		if (ioctl(fefd, FE_GET_EVENT, &event) < 0)
 			break;
 	}
 	bool init = true;
@@ -1799,13 +1748,12 @@ int main_spectrum(int fefd) {
 		if (!((1 << pol_is_v_) & options.pol))
 			continue; // this pol not needed
 		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(),  "spectrum",
-						options.adapter_no, pol_is_v? 'V':'H');
-		FILE*fpout = nullptr;
-		if(options.start_freq < lnb_universal_slof) {
-			//scanning (part of) low band
-			spectrum_band(&fpout, fname, fefd, efd, options.start_freq,
-										std::min(lnb_universal_slof, options.end_freq), pol_is_v, 0);
+		sprintf(fname, options.filename_pattern.c_str(), "spectrum", options.adapter_no, pol_is_v ? 'V' : 'H');
+		FILE* fpout = nullptr;
+		if (options.start_freq < lnb_universal_slof) {
+			// scanning (part of) low band
+			spectrum_band(&fpout, fname, fefd, efd, options.start_freq, std::min(lnb_universal_slof, options.end_freq),
+										pol_is_v, 0);
 		}
 
 		if (options.end_freq > lnb_universal_slof) {
