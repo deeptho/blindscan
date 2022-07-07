@@ -1465,7 +1465,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				if(tone_off()<0)
 					return -1;
 #endif
-				msleep(must_pause ? 100: 15);
+				msleep(must_pause ? 200: 30);
 				/*
 					tone burst commands deal with simpler equipment.
 					They use a 12.5 ms duration 22kHz burst for transmitting a 1
@@ -1487,7 +1487,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 					if(tone_off()<0)
 						return -1;
 #endif
-					msleep(must_pause ? 100: 15);
+					msleep(must_pause ? 200: 30);
 					int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
 					ret = send_diseqc_message(fefd, 'C', options.committed*4, extra,  repeated);
 					if(ret<0) {
@@ -1507,7 +1507,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high)
 				if(tone_off()<0)
 					return -1;
 #endif
-				msleep(must_pause ? 100: 15);
+				msleep(must_pause ? 200: 30);
 				ret=send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
 				if(ret<0) {
 					printf("Sending Uncommitted DiseqC message failed");
