@@ -17,7 +17,6 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *
  */
-
 #include "CLI/CLI.hpp"
 #include "neumofrontend.h"
 #include <algorithm>
@@ -50,6 +49,7 @@
 #include <unistd.h>
 #include <values.h>
 
+
 int tune_it(int fefd, int frequency_, bool pol_is_v);
 int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v);
 int tune(int fefd, int frequency, bool pol_is_v);
@@ -68,33 +68,32 @@ static constexpr int lnb_wideband_lof = 10400 * 1000UL;
 static constexpr int lnb_wideband_uk_lof = 10410 * 1000UL;
 static constexpr int lnb_c_lof = 5150 * 1000UL;
 
-enum blindscan_method_t
-{
-	SCAN_EXHAUSTIVE = 1, // old method: steps to the frequency bands and starts a blindscan tune
-	SCAN_FREQ_PEAKS,		 // scans for rising and falling frequency peaks and launches blindscan there
+enum blindscan_method_t {
+	SCAN_SWEEP = 1, // old method: steps to the frequency bands and starts a blindscan tune
+	SCAN_FFT,		 // scans for rising and falling frequency peaks and launches blindscan there
 };
 
-enum lnb_type_t
-{
+enum lnb_type_t {
 	UNIVERSAL_LNB = 1,
 	WIDEBAND_LNB,
 	WIDEBAND_UK_LNB,
 	C_LNB,
 };
 
-enum class command_t : int
-{
+enum class command_t : int {
 	BLINDSCAN,
 	SPECTRUM,
 	IQ
 };
+
+
 /* resolution = 500kHz : 60s
 	 resolution = 1MHz : 31s
 	 resolution = 2MHz : 16s
 */
 struct options_t {
 	command_t command{command_t::SPECTRUM};
-	blindscan_method_t blindscan_method{SCAN_FREQ_PEAKS};
+	blindscan_method_t blindscan_method{SCAN_FFT};
 	fe_delivery_system delivery_system{SYS_DVBS2};
 	lnb_type_t lnb_type{UNIVERSAL_LNB};
 	dtv_fe_spectrum_method spectrum_method{SPECTRUM_METHOD_SWEEP};
@@ -118,6 +117,7 @@ struct options_t {
 	int start_pls_code{-1};
 	int end_pls_code{-1};
 	int adapter_no{0};
+	int rf_in{-1};
 	int frontend_no{0};
 	std::string diseqc{"UC"};
 	int uncommitted{-1};
@@ -206,7 +206,6 @@ int32_t driver_freq_for_freq(int32_t frequency)		{
 	case WIDEBAND_LNB:
 		return frequency - lnb_wideband_lof;
 		break;
-
 	case WIDEBAND_UK_LNB:
 		return frequency - lnb_wideband_uk_lof;
 		break;
@@ -227,15 +226,12 @@ uint32_t freq_for_driver_freq(int32_t frequency, int band)		{
 			return frequency + lnb_universal_lof_high;
 		}
 		break;
-
 	case WIDEBAND_LNB:
 		return frequency + lnb_wideband_lof;
 		break;
-
 	case WIDEBAND_UK_LNB:
 		return frequency + lnb_wideband_uk_lof;
 		break;
-
 	case C_LNB:
 		return lnb_c_lof - frequency;
 		break;
@@ -311,9 +307,12 @@ int options_t::parse_options(int argc, char** argv) {
 																																		{"fft", SPECTRUM_METHOD_FFT}};
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH", 3}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
-	std::map<std::string, blindscan_method_t> blindscan_method_map{{"exhaustive", SCAN_EXHAUSTIVE},
-																																 {"spectral-peaks", SCAN_FREQ_PEAKS}};
-	std::map<std::string, lnb_type_t> lnb_type_map{{"universal", UNIVERSAL_LNB}, {"C", C_LNB}};
+	std::map<std::string, blindscan_method_t> blindscan_method_map{{"sweep", SCAN_SWEEP},
+																																 {"fft", SCAN_FFT}};
+	std::map<std::string, lnb_type_t> lnb_type_map{{"universal", UNIVERSAL_LNB},
+																								 {"wideband", WIDEBAND_LNB},
+																								 {"wideband-uk", WIDEBAND_UK_LNB},
+																								 {"C", C_LNB}};
 	std::vector<std::string> pls_entries;
 
 	app.add_option("-c,--command", command, "Command to execute", true)
@@ -331,6 +330,7 @@ int options_t::parse_options(int argc, char** argv) {
 		->transform(CLI::CheckedTransformer(spectrum_method_map, CLI::ignore_case));
 
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
+	app.add_option("-r,--rf-in", rf_in, "RF input", true);
 	app.add_option("--frontend", frontend_no, "Frontend number", true);
 
 	app.add_option("-s,--start-freq", start_freq, "Start of frequency range to scan (kHz)", true);
@@ -351,11 +351,11 @@ int options_t::parse_options(int argc, char** argv) {
 	app.add_option("--end-pls-code", end_pls_code, "End of PLS code range to start (mode=ROOT!)", true);
 
 	app.add_option("-d,--diseqc", diseqc,
-								 "diseqc command string (C: send committed command; "
+								 "DiSEqC command string (C: send committed command; "
 								 "U: send uncommitted command",
 								 true);
-	app.add_option("-U,--uncommitted", uncommitted, "uncommitted switch number (lowest is 0)", true);
-	app.add_option("-C,--committed", committed, "committed switch number (lowest is 0)", true);
+	app.add_option("-U,--uncommitted", uncommitted, "Uncommitted switch number (lowest is 0)", true);
+	app.add_option("-C,--committed", committed, "Committed switch number (lowest is 0)", true);
 
 	try {
 		app.parse(argc, argv);
@@ -363,8 +363,12 @@ int options_t::parse_options(int argc, char** argv) {
 		app.exit(e);
 		return -1;
 	}
+	if (options.freq < 4800000)
+		options.lnb_type = C_LNB;
 	parse_pls(pls_entries);
+
 	printf("adapter=%d\n", adapter_no);
+	printf("rf_in=%d\n", rf_in);
 	printf("frontend=%d\n", frontend_no);
 
 	printf("start-freq=%d\n", start_freq);
@@ -442,15 +446,9 @@ void print_tuner_status(fe_status_t festatus) {
 		printf("     FE_HAS_LOCK : everything's working...");
 	if (festatus & FE_TIMEDOUT)
 		printf("     FE_TIMEDOUT : no lock within the last about 2 seconds");
-	if (festatus & FE_HAS_TIMING_LOCK)
+	if (festatus & (FE_HAS_TIMING_LOCK|FE_OUT_OF_RESOURCES))
 		printf("     FE_REINIT : frontend has timing loop locked");
 	printf("---");
-	/*
-		fe_status & FE_HAS_LOCK : GOOD
-		fe_status & (FE_HAS_SYNC | FE_HAS_VITERBI | FE_HAS_CARRIER)) : BAD
-		fe_status & FE_HAS_SIGNAL : FAINT
-
-	*/
 }
 
 int check_lock_status(int fefd) {
@@ -546,10 +544,7 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256
 																																		 // entries...
-
-	assert(cmdseq.props[i].u.buffer.len == 32);
-	uint32_t* matype_bitset =
-		(uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256 entries...
+	int matype = cmdseq.props[i++].u.data;
 
 	assert(i == cmdseq.num);
 	// int dtv_bandwidth_hz_prop = cmdseq.props[12].u.data;
@@ -572,7 +567,6 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	currentinv = dtv_inversion_prop;
 	currentrol = dtv_rolloff_prop;
 	currentpil = dtv_pilot_prop;
-	// assert(currentpol == 1-polarisation);
 
 	if (currentfreq < allowed_freq_min)
 		return std::make_tuple(currentfreq, (135 * (currentsr / FREQ_MULT)) / (2 * 100));
@@ -602,6 +596,7 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 		printf("\n");
 	}
 
+#ifdef TODO
 	int num_matype = 0;
 	for (int i = 0; i < 256; ++i) {
 		int j = i / 32;
@@ -616,7 +611,7 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	if (num_matype > 0) {
 		printf("\n");
 	}
-
+#endif
 	for (int i = 0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_DECIBEL)
 			printf("SIG=%4.2lfdB ", dtv_stat_signal_strength_prop.stat[i].svalue / 1000.);
@@ -787,88 +782,6 @@ void get_spectrum(FILE** fpout, const char* fname, int fefd, bool pol_is_v, int 
 	fflush(*fpout);
 }
 
-dtv_fe_constellation_sample samples[65536];
-void get_constellation_samples(int fefd, int efd, bool pol_is_v, int num_samples = 1024 * 4, int constel_select = 1) {
-	int ret = 0;
-	if (num_samples > sizeof(samples) / sizeof(samples[0]))
-		num_samples = sizeof(samples) / sizeof(samples[0]);
-	printf("==========================\n");
-	assert(options.pol == 2 || options.pol == 1);
-	while (1) {
-		struct dvb_frontend_event event {};
-		if (ioctl(fefd, FE_GET_EVENT, &event) < 0)
-			break;
-	}
-
-	ret = tune(fefd, options.freq, pol_is_v);
-	if (ret != 0) {
-		printf("Tune FAILED\n");
-		exit(1);
-	}
-
-	ret = driver_start_constellation(fefd, num_samples, constel_select);
-	if (ret != 0) {
-		printf("constellation FAILED\n");
-		exit(1);
-	}
-
-	struct dvb_frontend_event event {};
-	bool timedout = false;
-	bool locked = false;
-	int count = 0;
-	while (count < 3 && !timedout && !locked) {
-		struct epoll_event events[1]{{}};
-		auto s = epoll_wait(efd, events, 1, epoll_timeout);
-		if (s < 0)
-			printf("\tEPOLL failed: err=%s\n", strerror(errno));
-		if (s == 0) {
-			// printf("TIMEOUT\n");
-			printf("\tTIMEOUT\n");
-			timedout = true;
-			break;
-		}
-		int r = ioctl(fefd, FE_GET_EVENT, &event);
-		if (r < 0)
-			printf("\tFE_GET_EVENT stat=%d err=%s\n", event.status, strerror(errno));
-		else {
-			timedout = event.status & FE_TIMEDOUT;
-			locked = event.status & FE_HAS_VITERBI;
-			if (count >= 1)
-				printf("\tFE_GET_EVENT: stat=%d, timedout=%d locked=%d\n", event.status, timedout, locked);
-			count++;
-		}
-	}
-
-	if (check_lock_status(fefd)) {
-		struct dtv_property p[] = {
-			{.cmd = DTV_CONSTELLATION}, // 0 DVB-S, 9 DVB-S2
-		};
-		struct dtv_properties cmdseq = {.num = sizeof(p) / sizeof(p[0]), .props = p};
-		char fname[512];
-		sprintf(fname, options.filename_pattern.c_str(), "iq", options.adapter_no, pol_is_v ? 'V' : 'H');
-
-		decltype(cmdseq.props[0].u.constellation) cs{};
-		cs.num_samples = sizeof(samples) / sizeof(samples[0]);
-		cs.samples = samples;
-		cmdseq.props[0].u.constellation = cs;
-		if (ioctl(fefd, FE_GET_PROPERTY, &cmdseq) < 0) {
-			printf("ioctl failed: %s\n", strerror(errno));
-			assert(0); // todo: handle EINTR
-			return;
-		}
-		printf("Constellation has %d samples\n", cs.num_samples);
-		if (cs.num_samples > 0) {
-			FILE* fpout = fopen(fname, "w");
-			assert(fpout);
-			for (int i = 0; i < cs.num_samples; ++i)
-				fprintf(fpout, "%d %d\n", cs.samples[i].real, cs.samples[i].imag);
-			fclose(fpout);
-		}
-	} else
-		printf("\tnot locked => NO SAMPLES\n");
-	// printf("-------------------------------------------------\n");
-}
-
 void close_frontend(int fefd);
 
 int get_extended_frontend_info(int fefd) {
@@ -884,7 +797,7 @@ int get_extended_frontend_info(int fefd) {
 	}
 	printf("Name of card: %s\n", fe_info.card_name);
 	printf("Name of adapter: %s\n", fe_info.adapter_name);
-	printf("Name of frontend: %s\n", fe_info.name);
+	printf("Name of frontend: %s\n", fe_info.card_name);
 	/*fe_info.frequency_min
 		fe_info.frequency_max
 		fe_info.symbolrate_min
@@ -1124,7 +1037,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, bool pol_is_
 		do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
 	auto start_freq = driver_freq_for_freq(start_freq_);
-	auto end_freq = driver_freq_for_freq(end_freq_);
+	auto end_freq = driver_freq_for_freq(end_freq_ -1) +1;
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 #ifdef SET_VOLTAGE_TONE_DURING_TUNE
@@ -1176,7 +1089,7 @@ int driver_start_blindscan(int fefd, int start_freq_, int end_freq_, bool pol_is
 	do_lnb_and_diseqc(fefd, start_freq_, pol_is_v);
 
 	auto start_freq = driver_freq_for_freq(start_freq_);
-	auto end_freq = driver_freq_for_freq(end_freq_);
+	auto end_freq = driver_freq_for_freq(end_freq_ -1) +1;
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
 
@@ -1430,20 +1343,23 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 		13V = vertical or right-hand  18V = horizontal or low-hand
 		TODO: change this to 18 Volt when using positioner
 	*/
+	if (options.rf_in >=0) {
+		printf("select rf_in=%d\n", options.rf_in);
+		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, (int32_t) options.rf_in))) {
+			printf("problem Setting rf_input\n");
+			return -1;
+		}
+	}
 
 	fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
 	if ((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
-		printf("problem Setting the Voltage\n");
+		printf("problem Setting voltage\n");
 		return -1;
 	}
 
 #endif
 
-	// TODO: diseqc_command_string should be read from lnb
-
 	bool band_is_high = hi_lo(frequency);
-
-	// this ioctl is also performed internally in modern kernels; save some time
 
 	// Note: the following is a NOOP in case no diseqc needs to be sent
 	ret = diseqc(fefd, pol_is_v, band_is_high);
@@ -1654,7 +1570,7 @@ uint32_t spectrum_band(FILE** fpout, const char* fname, int fefd, int efd, int s
 	return 0;
 }
 
-int main_blindscan_slow(int fefd) {
+int main_blindscan_sweep(int fefd) {
 	int uncommitted = 0;
 
 	clear(fefd);
@@ -1681,7 +1597,7 @@ int main_blindscan_slow(int fefd) {
 	return 0;
 }
 
-int main_blindscan(int fefd) {
+int main_blindscan_fft(int fefd) {
 	int uncommitted = 0;
 	clear(fefd);
 	int efd = epoll_create1(0); // create an epoll instance
@@ -1766,29 +1682,10 @@ int main_spectrum(int fefd) {
 	return 0;
 }
 
-int main_constellation(int fefd) {
-	int uncommitted = 0;
-	bool pol_is_v = (options.pol == 2);
-	printf("Getting IQ samples\n");
-	clear(fefd);
-	int efd = epoll_create1(0); // create an epoll instance
-
-	struct epoll_event ep;
-	memset(&ep, 0, sizeof(ep));
-
-	ep.data.fd = fefd;																	 // user data
-	ep.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET; // edge triggered!
-	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
-	if (s < 0)
-		printf("EPOLL Failed: err=%s\n", strerror(errno));
-	assert(s == 0);
-
-	scan_freq(fefd, efd, options.freq, pol_is_v);
-	get_constellation_samples(fefd, efd, pol_is_v, options.num_samples);
-	return 0;
-}
 
 int main(int argc, char** argv) {
+	printf("s=%d\n", sizeof(fe_status_t));
+	return 0;
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
 	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
@@ -1813,11 +1710,11 @@ int main(int argc, char** argv) {
 	switch(options.command) {
 	case command_t::BLINDSCAN:
 		switch (options.blindscan_method) {
-		case blindscan_method_t::SCAN_EXHAUSTIVE:
-			ret |= main_blindscan_slow(fefd);
+		case blindscan_method_t::SCAN_SWEEP:
+			ret |= main_blindscan_sweep(fefd);
 			break;
-		case blindscan_method_t::SCAN_FREQ_PEAKS:
-			ret |= main_blindscan(fefd);
+		case blindscan_method_t::SCAN_FFT:
+			ret |= main_blindscan_fft(fefd);
 			break;
 		}
 		break;
