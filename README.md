@@ -179,20 +179,31 @@ Options:
   -h,--help                   Print this help message and exit
   -c,--command ENUM:value in {iq->1,tune->0} OR {1,0}=0
                               Command to execute
+  -A,--algo ENUM:value in {blind->0,cold->2,warm->1} OR {0,2,1}=0
+                              Algorithm for tuning
   -a,--adapter INT=0          Adapter number
+  -r,--rf-in INT=-1           RF input
   --frontend INT=0            Frontend number
-  -S,--symbol-rate INT=45000  Symbolrate (kHz)
+  -S,--symbol-rate INT=-1     Symbolrate (kHz)
+  -m,--modulation ENUM:value in {APSK_1024->30,APSK_128->22,APSK_128L->28,APSK_16->10,APSK_16L->25,APSK_256->23,APSK_256L->29,APSK_32->11,APSK_32L->26,APSK_64->21,APSK_64L->27,APSK_8L->24,C_OQPSK->17,C_QPSK->14,DQPSK->12,I_QPSK->15,PSK_8->9,QAM_1024->19,QAM_128->4,QAM_16->1,QAM_256->5,QAM_32->2,QAM_4096->20,QAM_4_NR->13,QAM_512->18,QAM_64->3,QAM_AUTO->6,QPSK->0,Q_QPSK->16,VSB_16->8,VSB_8->7} OR {30,22,28,10,25,23,29,11,26,21,27,24,17,14,12,15,9,19,4,1,5,2,20,13,18,3,6,0,16,8,7}=9
+                              modulation
+  --delsys ENUM:value in {ATSC->11,ATSCMH->12,AUTO->22,CMMB->14,DAB->15,DCII->21,DSS->4,DTMB->13,DVBC->1,DVBC2->19,DVBH->7,DVBS->5,DVBS2->6,DVBS2X->20,DVBT->3,DVBT2->16,ISDBC->10,ISDBS->9,ISDBT->8,TURBO->17} OR {11,12,22,14,15,21,4,13,1,19,7,5,6,20,3,16,10,9,8,17}=6
+                              Delivery system
   -R,--search-range INT=10000 Search range (kHz)
   -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
                               Polarization to scan
   -n,--num-samples INT=1024   Number of IQ samples to fetch
-  -f,--frequency INT=0        Frequency to tune for getting IQ samples
-  --pls-modes TEXT=[] ...     PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +
+  -f,--frequency INT=-1       Frequency to tune for getting IQ samples
+  -s,--stream-id INT=-1       stream_id to select
+  --pls-code TEXT=[] ...      PLS mode (ROOT, GOLD, COMBO) and code (number) to scan, separated by +
   --start-pls-code INT=-1     Start of PLS code range to start (mode=ROOT!)
   --end-pls-code INT=-1       End of PLS code range to start (mode=ROOT!)
+  -T,--pls-search-timeout INT=25
+                              Search range timeout
   -d,--diseqc TEXT=UC         DiSEqC command string (C: send committed command; U: send uncommitted command
   -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
   -C,--committed INT=-1       Committed switch number (lowest is 0)
+
 
 ```
 
