@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2019-2021 deeptho@gmail.com
+ * Neumo dvb (C) 2019-2023 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1306,9 +1306,6 @@ int main_constellation(int fefd) {
 }
 
 int main(int argc, char** argv) {
-
-	//printf("sizes=%d %d %d\n", sizeof(dvb_frontend_event), sizeof(fe_status_t), sizeof(dvb_frontend_parameters));
-
 	bool has_blindscan{false};
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
@@ -1326,7 +1323,8 @@ int main(int argc, char** argv) {
 	if (fefd < 0) {
 		exit(1);
 	}
-	if(has_blindscan ? get_extended_frontend_info(fefd) : get_frontend_info(fefd)) {
+	if(has_blindscan ?
+		 get_extended_frontend_info(fefd) : get_frontend_info(fefd)) {
 		exit(1);
 	}
 	int ret = 0;
