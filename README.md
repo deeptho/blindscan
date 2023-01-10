@@ -210,12 +210,14 @@ Options:
 
 
 ## Compiling
+The code is compiled with clang++. Make sure it is installed as some versions of g++ have some
+problems compiling this
 
 ````
 cd <whereever you have checkout>
 mkdir build
 cd build
-cmake .. -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake ..
 make
 ````
 
