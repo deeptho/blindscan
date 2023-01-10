@@ -138,7 +138,13 @@ to RF input 2 and scan the full vertical band
 
 `neumo-tune -a 0 -U 8 -c iq -f 10719000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and obtain
 8000 IQ samples. The samples will be saved in `/tmp/iq_a0_10719.000V.dat`
-Currently this requires an active DVB signal. This will not work for inactive transponders or continuous stream transponders.
+Currently this requires an active DVB signal. This will not work for inactive transponders or continuous stream transponders. The script plotiq.py can be used to view the samples. Ypu will need to install pandas, e.g.,
+
+```
+pip3 install pandas
+```
+
+
 
 # Blindscan tuning a single transponder
 
