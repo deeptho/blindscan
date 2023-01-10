@@ -101,7 +101,7 @@ struct options_t {
 	int symbol_rate{-1}; // in kHz
 	fe_modulation modulation{PSK_8};
 	fe_delivery_system delivery_system{SYS_DVBS2};
-	int pol = 3;
+	int pol = 0;
 
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	std::string pls;
@@ -272,7 +272,7 @@ int options_t::parse_options(int argc, char** argv) {
 						 {"warm", algo_t::WARM},
 						 {"cold", algo_t::COLD}
 	};
-	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}, {"BOTH",3}};
+	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
 	std::vector<std::string> pls_entries;
 
