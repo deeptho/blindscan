@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2019-2021 deeptho@gmail.com
+ * Neumo dvb (C) 2019-2023 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -48,7 +48,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <values.h>
-
 
 int tune_it(int fefd, int frequency_, bool pol_is_v);
 int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v);
@@ -337,11 +336,11 @@ int options_t::parse_options(int argc, char** argv) {
 	//->required();
 	app.add_option("-e,--end-freq", end_freq, "End of frequency range to scan (kHz)", true);
 	app.add_option("-S,--step-freq", step_freq, "Frequency step (kHz)", true);
-	app.add_option("-r,--spectral-resolution", spectral_resolution, "Spectral resolution (kHz)", true);
+	app.add_option("-R,--spectral-resolution", spectral_resolution, "Spectral resolution (kHz)", true);
 	app.add_option("-F,--fft-size", fft_size, "FFT size", true);
 
 	app.add_option("-M,--max-symbol-rate", max_symbol_rate, "Maximal symbolrate (kHz)", true);
-	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
+	app.add_option("--search-range", search_range, "Search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
 		->transform(CLI::CheckedTransformer(pol_map, CLI::ignore_case));
@@ -366,7 +365,6 @@ int options_t::parse_options(int argc, char** argv) {
 	if (options.freq < 4800000)
 		options.lnb_type = C_LNB;
 	parse_pls(pls_entries);
-
 	printf("adapter=%d\n", adapter_no);
 	printf("rf_in=%d\n", rf_in);
 	printf("frontend=%d\n", frontend_no);
@@ -533,17 +531,14 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	int dtv_inversion_prop = cmdseq.props[i++].u.data;
 	int dtv_rolloff_prop = cmdseq.props[i++].u.data;
 	int dtv_pilot_prop = cmdseq.props[i++].u.data;
-#if 0
 	int dtv_tone_prop = cmdseq.props[i++].u.data;
-#else
-	i++;
-#endif
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
 
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256
 																																		 // entries...
+
 	int matype = cmdseq.props[i++].u.data;
 
 	assert(i == cmdseq.num);
@@ -596,22 +591,8 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 		printf("\n");
 	}
 
-#ifdef TODO
-	int num_matype = 0;
-	for (int i = 0; i < 256; ++i) {
-		int j = i / 32;
-		auto mask = ((uint32_t)1) << (i % 32);
-		if (matype_bitset[j] & mask) {
-			if (num_matype == 0)
-				printf("MATYPE list:");
-			printf(" %d", i);
-			num_matype++;
-		}
-	}
-	if (num_matype > 0) {
-		printf("\n");
-	}
-#endif
+	printf("MATYPE: 0x%x\n", matype);
+
 	for (int i = 0; i < dtv_stat_signal_strength_prop.len; ++i) {
 		if (dtv_stat_signal_strength_prop.stat[i].scale == FE_SCALE_DECIBEL)
 			printf("SIG=%4.2lfdB ", dtv_stat_signal_strength_prop.stat[i].svalue / 1000.);
@@ -1008,10 +989,12 @@ int clear(int fefd) {
 		}, // RESET frontend's cached data
 
 	};
-	struct dtv_properties cmdclear = {.num = 1, .props = pclear};
+	struct dtv_properties cmdclear = {
+		.num = 1,
+		.props = pclear
+	};
 	if ((ioctl(fefd, FE_SET_PROPERTY, &cmdclear)) == -1) {
 		printf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
-		// set_interrupted(ERROR_TUNE<<8);
 		return -1;
 	}
 	return 0;
@@ -1615,6 +1598,8 @@ int main_blindscan_fft(int fefd) {
 	for (int pol_is_v_ = 0; pol_is_v_ < 2; ++pol_is_v_) {
 		bool pol_is_v = pol_is_v_;
 		// 0=H 1=V
+		if (!((1 << pol_is_v_) & options.pol))
+			continue; // this pol not needed
 		char fname_spectrum[512];
 		sprintf(fname_spectrum, options.filename_pattern.c_str(), "spectrum", options.adapter_no, pol_is_v ? 'V' : 'H');
 		FILE* fpout_spectrum = nullptr;
@@ -1623,8 +1608,6 @@ int main_blindscan_fft(int fefd) {
 		sprintf(fname, options.filename_pattern.c_str(), "blindscan", options.adapter_no, pol_is_v ? 'V' : 'H');
 		FILE* fpout_bs = fopen(fname, "w");
 
-		if (!((1 << pol_is_v) & options.pol))
-			continue; // this pol not needed
 		if (options.start_freq < lnb_universal_slof) {
 			// scanning (part of) low band
 			scan_band(fpout_bs, &fpout_spectrum, fname_spectrum, fefd, efd, options.start_freq,
@@ -1684,15 +1667,14 @@ int main_spectrum(int fefd) {
 
 
 int main(int argc, char** argv) {
-	printf("s=%d\n", sizeof(fe_status_t));
-	return 0;
+	bool has_blindscan{false};
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
 	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
 		printf("Blindscan drivers found\n");
+			has_blindscan = true;
 	} else {
-		printf("!!!!Blindscan drivers not installed!!!\n");
-		exit(1);
+		printf("!!!!Blindscan drivers not installed  - only regular tuning will work!!!!\n");
 	}
 
 	char dev[512];
@@ -1701,9 +1683,9 @@ int main(int argc, char** argv) {
 	if (fefd < 0) {
 		exit(1);
 	}
-	if(get_extended_frontend_info(fefd)<0) {
-		printf("Blindscan not supported\n");
-		return 0;
+	if(has_blindscan ?
+		 get_extended_frontend_info(fefd) : get_frontend_info(fefd)) {
+		exit(1);
 	}
 
 	int ret=0;
