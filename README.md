@@ -14,27 +14,22 @@ Always use the latest versions from both repositories, or make sure that the ver
 (e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
 
 
-# Spectrum Scan
+# Spectrum Acquisition
 
-`./neumo-blindscan  -c spectrum` will scan a satellite in less 30 seconds with a resolution of 2MHz on tbs5927/
-The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but this can be changed.
-
-There are two methods of spectrum scan: `sweep` and `fft`. `sweep` sweeps across the frequency spectrum and measures
+There are two methods of spectrum acquisition: `sweep` and `fft`. `sweep` sweeps across the frequency spectrum and measures
 narrow band power, taking into account AGC settings. `fft` uses the builtin fft engine on the stid135 chip to scan
 the spectrum in very high resolution (100kHz per default, but 50kHz sometimes detects more narrow band transponders).
 
-The spectrum will be saved to `/tmp/spectrumH.dat` and `/tmp/spectrumV.dat` by default, but the name
-can be changed.
+The spectrum will be saved to `/tmp/spectrum_a0_H.dat` and `/tmp/spectrum_a0_V.dat` by default, but this can be changed.
 
-## Sweep scan
-`./neumo-blindscan -c spectrum  -U3 -pH -a0 --spectrum-method sweep --spectral-resolution 500`
-will scan the horizontal polarization.
+## Sweep method
+`neumo-blindscan  -c spectrum -U8 -a0  --rf-in=2 --spectrum-method sweep --spectral-resolution 2000`
+will perform a sweep scan with 2MHz resolution. On stid135 this is actually slower than fft scan.
+It will get a full spectrum in less 30 seconds with a resolution of 2MHz on tbs5927.
 
-## FFT Spectrum Scan
-
-`./neumo-blindscan -c spectrum  -U3 -pH -a0 --spectrum-method fft --spectral-resolution 100` will scan
-the full Ku band in one polarization in about 20 seconds with a resolution of 100kHz on tbs6909x and
-tbs6903x. This is using the internal high speed fft engine.
+## FFT method
+`neumo-blindscan  -c spectrum -U8 -a0  --rf-in=2 --spectrum-method fft --spectral-resolution 100` will scan a satellite
+in less 30 seconds with a resolution of 100kHz on tbs6909x and tbs6903x. This is using the internal high speed fft engine.
 
 Here are some example spectra for 5.0West; horizontal and vertical.
 
@@ -64,15 +59,6 @@ adds two codes to try.
 It is also possible to specify a range of ROOT+x codes to test. This option is very slow but
 will take around 90 minutes at most. Currently  this is not working on stid135.
 
-Blindscan results are saved in `/tmp/blindscanH.dat` and  `/tmp/blindscanV.dat` by default. Currently
-only the frequencies are logged. More detailed information is produced in the output printed on the
-screen. For example:
-
-````
-RESULT: freq=11178.144V Symrate=29996 Stream=12    pls_mode= 0:16416 ISI list: 4 13 5 12
-SIG=-41.7dB SIG= 85% CNR=17.30dB CNR= 86% SYS(21) 8PSK FEC_3_5  INV_OFF PIL_ON  ROL_AUTO
-````
-
 ## Exhaustive scan
 The spectrum is scanned in steps of step-freq. The default
 value is fine for scanning high symbolrate transponders.
@@ -80,8 +66,26 @@ To scan low symbol rate transponders, set max-symbol-rate to a low value
 and star-freq close to where they might be.
 
 ## Spectral peaks scan
+
+`neumo-blindscan  -c blindscan -U8 -a0  --rf-in=2 -pV --spectral-resolution 100` will use connect adapter 0
+to RF input 2 and scan the full vertical band.
+
 First the spectrum is analyzed to find candidate transponders and then a blindscan is performed
 on those transponders. If the transponder locks, the output is saved.
+Then the actual blindscan starts and results are printed on the terminal and saved
+in `/tmp/blindscan_a0_V.dat`. Here is a sample output:
+
+```
+SEARCH: 10700.000-11700.000 pol=V
+select rf_in=2
+	FE_GET_EVENT: stat=543, signal=1 carrier=1 viterbi=1 sync=1 timedout=0 locked=1
+RESULT: freq=10719.631V Symrate=27499 Stream=-1    pls_mode= 3:262143 MATYPE: 0xf2
+SIG=-26.48dB SIG= 74% CNR=13.50dB CNR= 67% SYS(22) MOD(6) FEC_AUTO INV_OFF PILAUTO ROLL_20
+retuning
+	FE_GET_EVENT: stat=543, signal=1 carrier=1 viterbi=1 sync=1 timedout=0 locked=1
+RESULT: freq=10757.991V Symrate=27498 Stream=-1    pls_mode= 3:262143 MATYPE: 0xf2
+SIG=-26.60dB SIG= 74% CNR=13.70dB CNR= 68% SYS(22) MOD(6) FEC_AUTO INV_OFF PILAUTO ROLL_20
+```
 
 On stv091x, the code searches for falling or rising edges of transponders. This is less reliable
 than the stid135 algorithm (see below). After a blindscan succeeds, the spectrum part for that transponder
@@ -95,19 +99,14 @@ On stid135, the code searches for central frequencies of transponders after acqu
 The spectrum is of high resolution and the peak detector is more sophisticated. As a result most spectral peaks are
 found, even very weak or very narrow band ones. The code scans all candidate peaks and skips the spectrum part
 for any found transponder. The main search parameters are:
+
 * search-range: determines how far to search from the center of frequency peaks. A typical vale is 10000
 * spectral-resolution: determines how finely to scan the spectrum. Use 50 for very low symbolrates. Otherwise use 100.
 
 The stid135 algorithm's peak finding is more reliable. On the other hand, the actual blindscan is slower for
 and less reliable for low symbol rates compared to stv091x. Also scanning false peaks is especially slow and
 this makes scanning slower than it could be.
-With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) takes about 6 minutes.
-
-Below is an example for scanning 5.0W with default parameters.
-
-```
-time ./neumo-blindscan -c blindscan  -a0 -U2 --blindscan-method spectral-peaks   -F 512  --spectral-resolution 100
-```
+With the current code, scanning a full satellite (H and V; 10700Ghz-12750Ghz) takes a few minutes.
 
 The most influential parameters are `spectral-resolution` (100kHz is fine, 50kHz is sometimes better), and
 `search-range` (default: 10Mhz, higher is sometimes better).  `spectral-resolution` determines the accuracy
@@ -116,8 +115,8 @@ candidate peak the blindscan can search for a lock. To find high symbolrate tran
 larger value will find more transponders if the peak-finder does not find the center of the transponder, but
 rather a value closer to its edges.
 
+Below is an older example for scanning 5.0W with default parameters.
 
-Here is the example:
 ![example 100kHz resolution fft scan 5.0W Horizontal](doc/images/tbs6909x_5.0wH_100kHz.png)
 
 The green pluses indicate the found transponders. The orange ones are the candidate peaks. Several
@@ -126,42 +125,120 @@ resolution setting o5 50kHz and can be tuned to reliably. The other one does not
 even though it can be done on Windows. So the drivers need some more improvement.
 
 
+## Parallel blindscan
+
+On tbs6909x, blindscan can use all tuners
+
+`stid135-blindscan  -cblindscan -a 0 1 2 3 4 5 6 -U8   --rf-in=2 -pV` will connect all adapters
+to RF input 2 and scan the full vertical band
+
+
+
 # Obtaining constellation samples
 
-`./neumo-tune -a 8 -c iq -f 11138000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and otain
-8000 IQ samples. The samples will be saved in `/tmp/iqV.dat`
+`neumo-tune -a 0 -U 8 -c iq -f 10719000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and obtain
+8000 IQ samples. The samples will be saved in `/tmp/iq_a0_10719.000V.dat`
 Currently this requires an active DVB signal. This will not work for inactive transponders or continuous stream transponders.
 
 # Blindscan tuning a single transponder
 
-`./neumo-tune -a 8 -c tune -f 11138000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and then wait forever.
-Currently this requires an active DVB signal. This will not work for inactive transponders or continuous stream transponders.
+`neumo-tune -a 0  -Ablind --rf-in=2 -U 8 -c tune -f 10719000 -pV` will connect adapter 0 to
+RF INPUT 2 on the card, send uncommitted switch command 8, tune to 10719V with the specified parameters  and then wait forever.
+
+The output will look like this:
+
+```
+adapter=0
+rf_in=2
+frontend=0
+freq=10719000
+pol=2
+pls_codes[5]={ 4202496, 2048, 98139136, 134216704, 80015360, }
+diseqc=UC: U=8 C=-1
+Blindscan drivers found
+Name of card: TurboSight TBS 6909x
+Name of adapter: A0 TBS 6909X
+Name of frontend: TurboSight TBS 6909x
+Tuning
+==========================
+Tuning to DVBS1/2 10719.000V
+select rf_in=2
+BLIND TUNE search-range=10000
+	FE_GET_EVENT: stat=543, timedout=0 locked=1
+	FE_READ_STATUS: stat=543, signal=1 carrier=1 viterbi=1 sync=1 timedout=0 locked=1
+```
 
 
-# Usage
+# Non-Blindscan tuning a single transponder
+
+`./neumo-tune -a 0 --rf-in=2 -U 8 -c tune -f 10719000 -pV -S 27500 --delsys DVBS2 --modulation PSK_8` will connect adapter 0 to
+RF INPUT 2 on the card, send uncommitted switch command 8, tune to 10719V with the specified parameters  and then wait forever.
+
+The output will look like this:
+
+```
+adapter=0
+rf_in=2
+frontend=0
+freq=10719000
+pol=2
+pls_codes[5]={ 4202496, 2048, 98139136, 134216704, 80015360, }
+diseqc=UC: U=8 C=-1
+Blindscan drivers found
+Name of card: TurboSight TBS 6909x
+Name of adapter: A0 TBS 6909X
+Name of frontend: TurboSight TBS 6909x
+Tuning
+==========================
+Tuning to DVBS1/2 10719.000V
+select rf_in=2
+BLIND TUNE search-range=10000
+	FE_GET_EVENT: stat=543, timedout=0 locked=1
+	FE_READ_STATUS: stat=543, signal=1 carrier=1 viterbi=1 sync=1 timedout=0 locked=1
+```
+
+# Usage neumo-blindscan
 
 ````
-Usage: ./neumo-blindscan [OPTIONS]
+Usage: neumo-blindscan [OPTIONS] [L]
+
+Positionals:
+  L ENUM:value in {C->4,universal->1,wideband->2,wideband-uk->3} OR {4,1,2,3}=1
+                              LNB Type
 
 Options:
   -h,--help                   Print this help message and exit
+  -c,--command ENUM:value in {blindscan->0,iq->2,spectrum->1} OR {0,2,1}=1
+                              Command to execute
+  --blindscan-method ENUM:value in {fft->2,sweep->1} OR {2,1}=2
+                              Blindscan method
+  --delsys ENUM:value in {ATSC->11,ATSCMH->12,AUTO->22,CMMB->14,DAB->15,DCII->21,DSS->4,DTMB->13,DVBC->1,DVBC2->19,DVBH->7,DVBS->5,DVBS2->6,DVBS2X->20,DVBT->3,DVBT2->16,ISDBC->10,ISDBS->9,ISDBT->8,TURBO->17} OR {11,12,22,14,15,21,4,13,1,19,7,5,6,20,3,16,10,9,8,17}=6
+                              Delivery system
+  --lnb-type ENUM:value in {C->4,universal->1,wideband->2,wideband-uk->3} OR {4,1,2,3}=1
+                              LNB Type
+  --spectrum-method ENUM:value in {fft->1,sweep->0} OR {1,0}=0
+                              Spectrum method
   -a,--adapter INT=0          Adapter number
+  -r,--rf-in INT=-1           RF input
   --frontend INT=0            Frontend number
-  -s,--start-freq INT=10700000
-                              Start of frequency range to scan (kHz)
-  -e,--end-freq INT=12750000  End of frequency range to scan (kHz)
+  -s,--start-freq INT=-1      Start of frequency range to scan (kHz)
+  -e,--end-freq INT=-1        End of frequency range to scan (kHz)
   -S,--step-freq INT=6000     Frequency step (kHz)
+  -R,--spectral-resolution INT=2000
+                              Spectral resolution (kHz)
+  -F,--fft-size INT=256       FFT size
   -M,--max-symbol-rate INT=45000
                               Maximal symbolrate (kHz)
-  -R,--search-range INT=10000 search range (kHz)
+  --search-range INT=10000    Search range (kHz)
   -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
                               Polarization to scan
   --pls-modes TEXT=[] ...     PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +
   --start-pls-code INT=-1     Start of PLS code range to start (mode=ROOT!)
   --end-pls-code INT=-1       End of PLS code range to start (mode=ROOT!)
   -d,--diseqc TEXT=UC         DiSEqC command string (C: send committed command; U: send uncommitted command
-  -U,--uncommitted INT=0      uncommitted switch number (lowest is 0)
-  -C,--committed INT=0        committed switch number (lowest is 0)
+  -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
+  -C,--committed INT=-1       Committed switch number (lowest is 0)
+
 ````
 
 DiSEqC switching signals are sent based on the DiSEqC command string. This
@@ -172,7 +249,9 @@ and --committed arguments
 
 
 
-```
+# Usage neumo-tune
+
+````
 Usage: ./neumo-tune [OPTIONS]
 
 Options:
@@ -204,10 +283,51 @@ Options:
   -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
   -C,--committed INT=-1       Committed switch number (lowest is 0)
 
-
 ```
 
+# Usage st135-blindscan
 
+````
+Usage: stid135-blindscan [OPTIONS]
+
+
+Positionals:
+  L ENUM:value in {C->4,universal->1,wideband->2,wideband-uk->3} OR {4,1,2,3}=1
+                              LNB Type
+
+Options:
+  -h,--help                   Print this help message and exit
+  -c,--command ENUM:value in {blindscan->0,iq->2,spectrum->1} OR {0,2,1}=1
+                              Command to execute
+  --blindscan-method ENUM:value in {fft->2,sweep->1} OR {2,1}=2
+                              Blindscan method
+  --delsys ENUM:value in {ATSC->11,ATSCMH->12,AUTO->22,CMMB->14,DAB->15,DCII->21,DSS->4,DTMB->13,DVBC->1,DVBC2->19,DVBH->7,DVBS->5,DVBS2->6,DVBS2X->20,DVBT->3,DVBT2->16,ISDBC->10,ISDBS->9,ISDBT->8,TURBO->17} OR {11,12,22,14,15,21,4,13,1,19,7,5,6,20,3,16,10,9,8,17}=6
+                              Delivery system
+  --lnb-type ENUM:value in {C->4,universal->1,wideband->2,wideband-uk->3} OR {4,1,2,3}=1
+                              LNB Type
+  --spectrum-method ENUM:value in {fft->1,sweep->0} OR {1,0}=1
+                              Spectrum method
+  -a,--adapter INT=[] ...     Adapter number
+  -r,--rf-in INT=-1           RF input
+  --frontend INT=0            Frontend number
+  -s,--start-freq INT=-1      Start of frequency range to scan (kHz)
+  -e,--end-freq INT=-1        End of frequency range to scan (kHz)
+  -S,--step-freq INT=6000     Frequency step (kHz)
+  --spectral-resolution INT=0 Spectral resolution (kHz)
+  -F,--fft-size INT=512       FFT size
+  -M,--max-symbol-rate INT=45000
+                              Maximal symbolrate (kHz)
+  -R,--search-range INT=10000 Search range (kHz)
+  -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
+                              Polarisation to scan
+  --pls-modes TEXT=[] ...     PLS modes (ROOT, GOLD, COMBO) and code to scan, separated by +
+  --start-pls-code INT=-1     Start of PLS code range to start (mode=ROOT!)
+  --end-pls-code INT=-1       End of PLS code range to start (mode=ROOT!)
+  -d,--diseqc TEXT=UC         DiSEqC command string (C: send committed command; U: send uncommitted command
+  -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
+  -C,--committed INT=-1       Committed switch number (lowest is 0)
+
+```
 
 ## Compiling
 The code is compiled with clang++. Make sure it is installed as some versions of g++ have some
