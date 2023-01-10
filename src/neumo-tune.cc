@@ -294,7 +294,7 @@ int options_t::parse_options(int argc, char** argv) {
 
 	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
 
-	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
+	app.add_option("-p,--pol", pol, "Polarization to scan", true)
 		->transform(CLI::CheckedTransformer(pol_map, CLI::ignore_case));
 
 	app.add_option("-n,--num-samples", num_samples, "Number of IQ samples to fetch", true);
@@ -305,7 +305,7 @@ int options_t::parse_options(int argc, char** argv) {
 								 true);
 	app.add_option("--start-pls-code", start_pls_code, "Start of PLS code range to start (mode=ROOT!)", true);
 	app.add_option("--end-pls-code", end_pls_code, "End of PLS code range to start (mode=ROOT!)", true);
-	app.add_option("-T,--pls-search-timeout", pls_search_timeout, "Search range timeou", true);
+	app.add_option("-T,--pls-search-timeout", pls_search_timeout, "Search range timeout", true);
 
 	app.add_option("-d,--diseqc", diseqc,
 								 "DiSEqC command string (C: send committed command; "
