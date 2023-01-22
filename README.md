@@ -20,7 +20,7 @@ There are two methods of spectrum acquisition: `sweep` and `fft`. `sweep` sweeps
 narrow band power, taking into account AGC settings. `fft` uses the builtin fft engine on the stid135 chip to scan
 the spectrum in very high resolution (100kHz per default, but 50kHz sometimes detects more narrow band transponders).
 
-The spectrum will be saved to `/tmp/spectrum_a0_H.dat` and `/tmp/spectrum_a0_V.dat` by default, but this can be changed.
+The spectrum will be saved to `/tmp/spectrum_rf2_H.dat` and `/tmp/spectrum_rf2_V.dat`, or similarly named files.
 
 ## Sweep method
 `neumo-blindscan  -c spectrum -U8 -a0  --rf-in=2 --spectrum-method sweep --spectral-resolution 2000`
@@ -67,13 +67,13 @@ and star-freq close to where they might be.
 
 ## Spectral peaks scan
 
-`neumo-blindscan  -c blindscan -U8 -a0  --rf-in=2 -pV --spectral-resolution 100` will use connect adapter 0
+`neumo-blindscan  -c blindscan -U8 -a0  --rf-in=2 -pV --spectral-resolution 100` will connect adapter 0
 to RF input 2 and scan the full vertical band.
 
 First the spectrum is analyzed to find candidate transponders and then a blindscan is performed
 on those transponders. If the transponder locks, the output is saved.
 Then the actual blindscan starts and results are printed on the terminal and saved
-in `/tmp/blindscan_a0_V.dat`. Here is a sample output:
+in `/tmp/blindscan_rf2_V.dat`. Here is a sample output:
 
 ```
 SEARCH: 10700.000-11700.000 pol=V
@@ -129,7 +129,7 @@ even though it can be done on Windows. So the drivers need some more improvement
 
 On tbs6909x, blindscan can use all tuners
 
-`stid135-blindscan  -cblindscan -a 0 1 2 3 4 5 6 -U8   --rf-in=2 -pV` will connect all adapters
+`stid135-blindscan  -cblindscan -a 0 1 2 3 4 5 6 7 -U8   --rf-in=2 -pV` will connect all adapters
 to RF input 2 and scan the full vertical band
 
 
