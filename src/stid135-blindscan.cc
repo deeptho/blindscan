@@ -1587,6 +1587,7 @@ int scanner_t::close_output()
 	if(fpout_bs) {
 		fclose(fpout_bs);
 	}
+	fpout_bs = nullptr;
 	return 0;
 }
 
