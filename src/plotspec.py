@@ -34,7 +34,7 @@ def plotspec(fname, pol, lim=None):
             spec = x[:,1]/1000.
             ax.plot(f, spec, label="spectrum (dB)")
             ret[fname] = spec
-            tps=method(fname.replace('spectrum', 'blindscan'))
+            tps=method(fname.replace('spectrum', 'blindscan').replace('_H', '').replace('_V', '').replace('_R', '').replace('_L', ''))
             f1= tps/1000
             spec1 = tps*0+-70
             ax.plot( f1, spec1,  '+', label="Found TPs")
@@ -54,7 +54,7 @@ def plotspec(fname, pol, lim=None):
     return ret
 
 
-rx = re.compile('(spectrum)(_a[0-9]+_)*([HV]).dat$')
+rx = re.compile('(spectrum)(_rf[0-9]+_)([HV]).dat$')
 def find_data(d='/tmp/'):
     ret=[]
     for root, dirs, files in os.walk(d):
@@ -69,7 +69,7 @@ def find_data(d='/tmp/'):
 
 d=os.getcwd()
 
-files=find_data(d)
+files=find_data()
 
 ret =dict()
 for file, pol in files:

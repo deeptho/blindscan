@@ -1,6 +1,5 @@
 
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  message("HERE")
   SET(CMAKE_INSTALL_PREFIX ../x86_64/target/ CACHE PATH comment FORCE)
   #SET(CMAKE_INSTALL_RPATH "../../x86_64/target/lib/")
   #SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
@@ -17,6 +16,7 @@ endif(USE_CLANG)
 
 
 add_executable(neumo-blindscan neumo-blindscan.cc dvb_strings.cc)
+add_executable(stid135-blindscan stid135-blindscan.cc dvb_strings.cc)
 
 add_executable(neumo-tune neumo-tune.cc dvb_strings.cc)
 
