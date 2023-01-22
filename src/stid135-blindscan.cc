@@ -1648,11 +1648,11 @@ int scanner_t::scan() {
 			// scanning (part of) high band
 			scan_band(std::max(options.start_freq, lnb_universal_slof), options.end_freq, 1, pol_is_v, append);
 		}
-		if(fpout_bs) {
-			close_output();
-			sort_output();
-		}
 	}
+	if(fpout_bs) {
+		close_output();
+		sort_output();
+		}
 	close_frontends();
 	return 0;
 }
