@@ -44,20 +44,13 @@ Next, in terminal
 
 ```sudo apt-get install git```
 
-Now go to TBS driver installation - LinuxTVWiki
+Now install the blindscan drivers:
 
-
-Scroll down to' Buidling TBS'Forked Driver' and follow these instructions in your Terminal -
-
-```mkdir tbsdriver
-cd tbsdriver
-git clone tbsdtv/media_build
+```mkdir blindscan_kernel
+cd blindscan_kernel
 git clone --depth=1 deeptho/linux_media -b deepthought ./media
-cd media_build
-make dir DIR=../media
-make allyesconfig
-make -j4
-sudo make install
+
+read the README.md provided for more instructions and follow the instructions
 ```
 
 (Notice we replace tbsdtv with deeptho in the second cloning line!)
