@@ -205,7 +205,7 @@ BLIND TUNE search-range=10000
 
 # Usage neumo-blindscan
 
-````
+```
 Usage: neumo-blindscan [OPTIONS] [L]
 
 Positionals:
@@ -245,7 +245,7 @@ Options:
   -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
   -C,--committed INT=-1       Committed switch number (lowest is 0)
 
-````
+```
 
 DiSEqC switching signals are sent based on the DiSEqC command string. This
 string controls the order in which DiSEqC commands are sent, e.g., "UC" means
@@ -257,7 +257,7 @@ and --committed arguments
 
 # Usage neumo-tune
 
-````
+```
 Usage: ./neumo-tune [OPTIONS]
 
 Options:
@@ -291,9 +291,9 @@ Options:
 
 ```
 
-# Usage st135-blindscan
+# Usage stid135-blindscan
 
-````
+```
 Usage: stid135-blindscan [OPTIONS]
 
 
@@ -339,12 +339,12 @@ Options:
 The code is compiled with clang++. Make sure it is installed as some versions of g++ have some
 problems compiling this
 
-````
+```
 cd <whereever you have checkout>
 mkdir build
 cd build
 cmake ..
 make
-````
+```
 
 The executable will be located in `build/src/blindscan` and can be copied to `/usr/bin/`
