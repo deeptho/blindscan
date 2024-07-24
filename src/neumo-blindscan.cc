@@ -885,7 +885,6 @@ int get_extended_frontend_info(int fefd) {
 	return 0;
 }
 
-
 int open_frontend(const char* frontend_fname) {
 	const bool rw = true;
 	int rw_flag = rw ? O_RDWR : O_RDONLY;
