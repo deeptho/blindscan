@@ -170,7 +170,7 @@ struct dvb_frontend_extended_info {
 	char       card_name[64]; //human readable name of tuner card
 	char       adapter_name[64]; //human readable name of adapter
 	char       card_address[64]; //name of the linux bus to which the device is attached (e.g. pci-express slot)
-	char       card_short_name[64]; //unique name of adapter depending on pci-express address and physical input
+	char       card_short_name[64]; //short human readable name of tuner card
 	__u8       supports_neumo; /*historically we relied on FE_CAN... to indicate supported features,
 														 but in future we will rely on data returned by FE_GET_EXTENDED_INFO
 														 Note that FE_GET_EXTENDED_INFO works on all drivers, even non neumo ones:
@@ -182,11 +182,11 @@ struct dvb_frontend_extended_info {
 	__u8       num_rf_inputs;
 	__s8       default_rf_input;
 	__u8       reserved3;
-	__s32      reserved4; //default rf_in value; used if user expresses no preference
+	__s32      reserved4;
 	__s64      card_mac_address; //unique identifier for card
 	__s64      adapter_mac_address; //unique identifier for adapter
 	char       unused[64 - 24 - 16];
-	__s8       rf_inputs[16]; /*rf inputs to which thios tuner can connect If num_rf_inputs==0,
+	__s8       rf_inputs[16]; /*rf inputs to which this tuner can connect. If num_rf_inputs==0,
 															then the adapter can connect to a single rf_input, which equals
 															adapter_no*/
 	__u32      frequency_min;
@@ -262,7 +262,8 @@ enum fe_sec_voltage {
  */
 enum fe_sec_tone_mode {
 	SEC_TONE_ON,
-	SEC_TONE_OFF
+	SEC_TONE_OFF,
+	SEC_TONE_NOTSET
 };
 
 /**
@@ -301,10 +302,10 @@ enum fe_status {
 	FE_HAS_SYNC		= 0x08,
 	FE_HAS_LOCK		= 0x10,
 	FE_TIMEDOUT		= 0x20,
-	FE_REINIT		= 0x40, //not used internally, but checked by dvblast
+	FE_REINIT		= 0x40, //not used internally, but checked by dvblast, so must remain 0
 	FE_IDLE		= 0x80,
 	FE_OUT_OF_RESOURCES = 0x100, //e.g., No LLR for stid135
-	FE_HAS_TIMING_LOCK		= 0x200,
+	FE_HAS_TIMING_LOCK		= 0x200, //was FE_REINIT; not used anyway
 };
 
 /**
@@ -343,6 +344,26 @@ enum fe_spectral_inversion {
  * @FEC_3_5:  Forward Error Correction Code 3/5
  * @FEC_9_10: Forward Error Correction Code 9/10
  * @FEC_2_5:  Forward Error Correction Code 2/5
+ * @FEC_1_3:  Forward Error Correction Code 1/3
+ * @FEC_1_4:  Forward Error Correction Code 1/4
+ * @FEC_5_9:  Forward Error Correction Code 5/9
+ * @FEC_7_9:  Forward Error Correction Code 7/9
+ * @FEC_8_15:  Forward Error Correction Code 8/15
+ * @FEC_11_15: Forward Error Correction Code 11/15
+ * @FEC_13_18: Forward Error Correction Code 13/18
+ * @FEC_9_20:  Forward Error Correction Code 9/20
+ * @FEC_11_20: Forward Error Correction Code 11/20
+ * @FEC_23_36: Forward Error Correction Code 23/36
+ * @FEC_25_36: Forward Error Correction Code 25/36
+ * @FEC_13_45: Forward Error Correction Code 13/45
+ * @FEC_26_45: Forward Error Correction Code 26/45
+ * @FEC_28_45: Forward Error Correction Code 28/45
+ * @FEC_32_45: Forward Error Correction Code 32/45
+ * @FEC_77_90: Forward Error Correction Code 77/90
+ * @FEC_11_45: Forward Error Correction Code 11/45
+ * @FEC_4_15: Forward Error Correction Code 4/15
+ * @FEC_14_45: Forward Error Correction Code 14/45
+ * @FEC_7_15: Forward Error Correction Code 7/15
  *
  * Please note that not all FEC types are supported by a given standard.
  */
@@ -376,10 +397,14 @@ enum fe_code_rate {
 	FEC_29_45,
 	FEC_31_45,
 	FEC_32_45,
+	FEC_77_90,
+	FEC_R_58,
+	FEC_R_60,
+	FEC_R_62,
+	FEC_R_5E,
 	FEC_4_15,
 	FEC_5_9,
 	FEC_7_15,
-	FEC_77_90,
 	FEC_7_9,
 	FEC_8_15,
 	FEC_9_20
@@ -402,6 +427,13 @@ enum fe_code_rate {
  * @DQPSK:	DQPSK modulation
  * @QAM_4_NR:	4-QAM-NR modulation
  * @DUMMY_PLF:	DUMMY PLF Frames
+ * @QAM_1024:	1024-QAM modulation
+ * @QAM_4096:	4096-QAM modulation
+ * @APSK_8_L:	8APSK-L modulation
+ * @APSK_16_L:	16APSK-L modulation
+ * @APSK_32_L:	32APSK-L modulation
+ * @APSK_64:	64APSK modulation
+ * @APSK_64_L:	64APSK-L modulation
  *
  * Please note that not all modulations are supported by a given standard.
  *
@@ -493,6 +525,7 @@ enum fe_transmit_mode {
  * @GUARD_INTERVAL_PN420:	PN length 420 (1/4)
  * @GUARD_INTERVAL_PN595:	PN length 595 (1/6)
  * @GUARD_INTERVAL_PN945:	PN length 945 (1/9)
+ * @GUARD_INTERVAL_1_64:	Guard interval 1/64
  *
  * Please note that not all guard intervals are supported by a given standard.
  */
@@ -508,6 +541,7 @@ enum fe_guard_interval {
 	GUARD_INTERVAL_PN420,
 	GUARD_INTERVAL_PN595,
 	GUARD_INTERVAL_PN945,
+	GUARD_INTERVAL_1_64,
 };
 
 /**
@@ -661,7 +695,8 @@ enum fe_interleaving {
 #define DTV_LOCKTIME 89
 #define DTV_MATYPE_LIST		90 //retrieve list of present matypesand stream_ids
 #define DTV_RF_INPUT 91
-#define DTV_MAX_COMMAND	 DTV_RF_INPUT
+#define DTV_SET_SEC_CONFIGURED 92
+#define DTV_MAX_COMMAND	 DTV_SET_SEC_CONFIGURED
 
 //commands for controlling long running algorithms via FE_ALGO_CTRL ioctl
 #define DTV_STOP 1
@@ -687,7 +722,11 @@ enum fe_pilot {
  * @ROLLOFF_35:		Roloff factor: α=35%
  * @ROLLOFF_20:		Roloff factor: α=20%
  * @ROLLOFF_25:		Roloff factor: α=25%
+ * @ROLLOFF_LOW:	Roloff lower than 20%.
  * @ROLLOFF_AUTO:	Auto-detect the roloff factor.
+ * @ROLLOFF_15:		Rolloff factor: α=15%
+ * @ROLLOFF_10:		Rolloff factor: α=10%
+ * @ROLLOFF_5:		Rolloff factor: α=5%
  *
  * .. note:
  *
@@ -715,6 +754,8 @@ enum fe_rolloff {
  *	Cable TV: DVB-C following ITU-T J.83 Annex B spec (ClearQAM)
  * @SYS_DVBC_ANNEX_C:
  *	Cable TV: DVB-C following ITU-T J.83 Annex C spec
+ * @SYS_DVBC2:
+ *      Cable TV: DVB-C2
  * @SYS_ISDBC:
  *	Cable TV: ISDB-C (no drivers yet)
  * @SYS_DVBT:
@@ -732,7 +773,7 @@ enum fe_rolloff {
  * @SYS_DVBS:
  *	Satellite TV: DVB-S
  * @SYS_DVBS2:
- *	Satellite TV: DVB-S2
+ *	Satellite TV: DVB-S2 and DVB-S2X
  * @SYS_TURBO:
  *	Satellite TV: DVB-S Turbo
  * @SYS_ISDBS:
@@ -769,7 +810,7 @@ enum fe_delivery_system {
 	SYS_DVBC2,
 	SYS_DVBS2X,
 	SYS_DCII,
-	SYS_AUTO
+	SYS_AUTO //22
 };
 
 /**
@@ -876,7 +917,7 @@ enum atscmh_rs_frame_mode {
 };
 
 /**
- * enum atscmh_rs_code_mode
+ * enum atscmh_rs_code_mode - ATSC-M/H Reed Solomon modes
  * @ATSCMH_RSCODE_211_187:	Reed Solomon code (211,187).
  * @ATSCMH_RSCODE_223_187:	Reed Solomon code (223,187).
  * @ATSCMH_RSCODE_235_187:	Reed Solomon code (235,187).
@@ -1130,6 +1171,28 @@ struct dtv_algo_ctrl {
 	} u;
 };
 
+enum fe_reservation_result {
+	FE_RESERVATION_MASTER = 0,
+	FE_RESERVATION_SLAVE = 1,
+	FE_RESERVATION_RETRY = 2,
+	FE_RESERVATION_UNCHANGED = 3,
+	FE_RESERVATION_FAILED = -1
+};
+
+enum fe_reservation_mode {
+	FE_RESERVATION_MODE_MASTER_OR_SLAVE = 0,
+	FE_RESERVATION_MODE_MASTER = 1,
+	FE_RESERVATION_MODE_SLAVE = 2,
+};
+
+struct fe_rf_input_control {
+	pid_t owner;
+	__s32 config_id;
+	__s32 rf_in;
+	enum fe_reservation_mode mode;
+};
+
+
 /*
  * When set, this flag will disable any zigzagging or other "normal" tuning
  * behavior. Additionally, there will be no automatic monitoring of the lock
@@ -1166,7 +1229,8 @@ struct dtv_algo_ctrl {
 #define FE_SET_PROPERTY		   _IOW('o', 82, struct dtv_properties)
 #define FE_GET_PROPERTY		   _IOR('o', 83, struct dtv_properties)
 #define FE_ALGO_CTRL		     _IOW('o', 84, struct dtv_algo_ctrl)
-#define FE_SET_RF_INPUT		   _IO('o', 85)
+#define FE_SET_RF_INPUT_LEGACY _IO('o', 85)
+#define FE_SET_RF_INPUT		   _IOW('o', 85, struct fe_rf_input_control)
 
 
 #define FE_GET_EXTENDED_INFO		_IOR('o', 86, struct dvb_frontend_extended_info)
@@ -1289,6 +1353,12 @@ struct usbi2c_access
 	__u8 reg;
 	__u8 num;
 	__u8 buf[8];
+};
+
+struct eeprom_info
+{
+	__u8 reg;
+	__u8 data;
 };
 
 #define FE_ECP3FW_READ    _IOR('o', 90, struct ecp3_info)
