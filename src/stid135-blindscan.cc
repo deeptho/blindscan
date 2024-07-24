@@ -215,7 +215,7 @@ struct frontend_t {
 	bool pol_is_v{false};
 	bool supports_spectrum_fft{false};
 	std::vector<int8_t> rf_inputs;
-	char message[256];
+	char message[512];
 	std::string adapter_name;
 	int create_poll();
 	//returns -1 on error, else 0
