@@ -1305,7 +1305,7 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 	*/
 	if (options.rf_in >=0) {
 		printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, (int32_t) options.rf_in))) {
+		if ((ret = ioctl(fefd, FE_SET_RF_INPUT_LEGACY, (int32_t) options.rf_in))) {
 			printf("problem Setting rf_input\n");
 			return -1;
 		}
