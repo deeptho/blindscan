@@ -104,7 +104,6 @@ struct options_t {
 	int step_freq = 6000; // in kHz
 
 	int search_range{10000};			 // in kHz
-	int max_symbol_rate{45000};		 // in kHz
 	int spectral_resolution{0}; // in kHz 0 = driver default
 	int fft_size{512};						 // power of 2
 	int pol = 3;
@@ -531,7 +530,6 @@ int options_t::parse_options(int argc, char** argv) {
 	app.add_option("--spectral-resolution", spectral_resolution, "Spectral resolution (kHz)", true);
 	app.add_option("-F,--fft-size", fft_size, "FFT size", true);
 
-	app.add_option("-M,--max-symbol-rate", max_symbol_rate, "Maximal symbolrate (kHz)", true);
 	app.add_option("-R,--search-range", search_range, "Search range (kHz)", true);
 
 	app.add_option("-p,--pol", pol, "Polarisation to scan", true)
@@ -567,7 +565,6 @@ int options_t::parse_options(int argc, char** argv) {
 	printf("step-freq=%d\n", step_freq);
 
 	printf("pol=%d\n", pol);
-	assert(max_symbol_rate >= 0 && max_symbol_rate <= 60000);
 	printf("pls_codes[%ld]={ ", pls_codes.size());
 	for (auto c : pls_codes)
 		printf("%d, ", c);
