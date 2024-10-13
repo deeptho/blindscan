@@ -168,6 +168,7 @@ struct options_t {
 
 };
 
+options_t options;
 struct frontend_t;
 
 class scanner_t {
@@ -199,10 +200,6 @@ public:
 	int xprintf(const char*fmt, ...);
 	int bs_printf(const char*fmt, ...);
 };
-
-options_t options;
-scanner_t scanner;
-
 
 struct frontend_t {
 	struct epoll_event ep{{}};
@@ -242,6 +239,8 @@ struct frontend_t {
 	int xprintf(const char*fmt, ...);
 	int save_info(int adapter_no, int band, bool pol_is_v);
 };
+
+scanner_t scanner;
 
 int frontend_t::xprintf(const char* fmt, ...) {
 	va_list args;
@@ -331,9 +330,6 @@ int scanner_t::scan_band(int start_freq, int end_freq, int band, bool pol_is_v, 
 }
 
 
-
-
-
 int frontend_t::task(int band, bool pol_is_v)
 {
 	this->band = band;
@@ -346,8 +342,6 @@ int frontend_t::task(int band, bool pol_is_v)
 	//close();
 	return 0;
 }
-
-
 
 static void print_vec(const char*name, std::vector<int>& v) {
 	printf("%s=", name);
@@ -1653,7 +1647,6 @@ int scanner_t::scan() {
 	close_frontends();
 	return 0;
 }
-
 
 
 int main(int argc, char** argv) {
