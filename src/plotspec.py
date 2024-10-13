@@ -4,6 +4,14 @@ import sys
 import time
 import math
 import numpy as np
+import matplotlib as mpl
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.backends.backend_wxagg import NavigationToolbar2WxAgg as NavigationToolbar
+
+if 'gi.repository.Gtk' in sys.modules:
+    del sys.modules['gi.repository.Gtk']
+mpl.use('WXAgg')
+
 import matplotlib.pyplot as plt
 import os
 import regex as re
@@ -22,7 +30,7 @@ def load_blindscan_old(fname):
 
 def plotspec(fname, pol, lim=None):
     fig, ax= plt.subplots();
-    fig.canvas.set_window_title(fname)
+    fig.canvas.manager.set_window_title(fname)
     have_blindscan = False
     x=np.loadtxt(fname)
     print (f"Loading {fname}")
