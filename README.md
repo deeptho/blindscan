@@ -321,8 +321,6 @@ Options:
   -S,--step-freq INT=6000     Frequency step (kHz)
   --spectral-resolution INT=0 Spectral resolution (kHz)
   -F,--fft-size INT=512       FFT size
-  -M,--max-symbol-rate INT=45000
-                              Maximal symbolrate (kHz)
   -R,--search-range INT=10000 Search range (kHz)
   -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
                               Polarisation to scan
