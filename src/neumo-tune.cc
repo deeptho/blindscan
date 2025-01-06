@@ -1,5 +1,5 @@
 /*
- * Neumo dvb (C) 2019-2023 deeptho@gmail.com
+ * Neumo dvb (C) 2019-2024 deeptho@gmail.com
  * Copyright notice:
  *
  * This program is free software; you can redistribute it and/or modify
@@ -48,6 +48,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <values.h>
+#include "util.h"
 
 dtv_fe_constellation_sample samples[65536];
 
@@ -102,6 +103,7 @@ struct options_t {
 	fe_modulation modulation{PSK_8};
 	fe_delivery_system delivery_system{SYS_DVBS2};
 	int pol = 0;
+	bool bbframes_mode{false};
 
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	std::string pls;
@@ -311,6 +313,8 @@ int options_t::parse_options(int argc, char** argv) {
 								 "DiSEqC command string (C: send committed command; "
 								 "U: send uncommitted command",
 								 true);
+	app.add_flag("-b,--bb_frames", bbframes_mode,
+								 "Ask to outputput bbframes encapsulated in mpeg packets");
 	app.add_option("-U,--uncommitted", uncommitted, "Uncommitted switch number (lowest is 0)", true);
 	app.add_option("-C,--committed", committed, "Committed switch number (lowest is 0)", true);
 
@@ -476,7 +480,6 @@ std::tuple<int, int> getinfo(FILE* fpout, int fefd, bool pol_is_v, int allowed_f
 	int dtv_tone_prop = cmdseq.props[i++].u.data;
 	int dtv_stream_id_prop = cmdseq.props[i++].u.data;
 	int dtv_scrambling_sequence_index_prop = cmdseq.props[i++].u.data;
-
 	assert(cmdseq.props[i].u.buffer.len == 32);
 	uint32_t* isi_bitset = (uint32_t*)cmdseq.props[i++].u.buffer.data; // TODO: we can only return 32 out of 256
 																																		 // entries...
@@ -914,10 +917,44 @@ int clear(int fefd) {
 	return 0;
 }
 
+
 int tune(int fefd, int frequency, bool pol_is_v) {
 	dtdebugf("Tuning to DVBS1/2 {}{}\n", frequency / 1000., pol_is_v ? 'V' : 'H');
 	if (clear(fefd) < 0)
 		return -1;
+	if (options.rf_in >=0) {
+		struct fe_rf_input_control ic;
+		ic.owner = getpid();
+		ic.config_id = 1;
+		ic.rf_in = options.rf_in;
+		ic.mode = 	FE_RESERVATION_MODE_MASTER;
+		dtdebugf("select rf_in={}\n", options.rf_in);
+		auto ret = (fe_ioctl_result) ioctl(fefd, FE_SET_RF_INPUT, &ic);
+		switch(ret) {
+		case FE_RESERVATION_NOT_SUPPORTED:
+			dtdebugf("setting rf_in not supported; MASTER rf_input={:d}", ic.rf_in);
+			break;
+		case  FE_RESERVATION_MASTER:
+			dtdebugf("Succesfully set MASTER rf_input={:d}", ic.rf_in);
+			break;
+		case FE_RESERVATION_SLAVE:
+			dtdebugf("Succesfully set SLAVE rf_input={:d}", ic.rf_in);
+			break;
+		case FE_RESERVATION_RETRY:
+			dtdebugf("Setting rf_input={:d} needs retry", ic.rf_in);
+			exit(-1);
+			break;
+		case FE_RESERVATION_UNCHANGED:
+			dtdebugf("Setting rf_input={:d} UNCHANGED", ic.rf_in);
+			exit(-1);
+			break;
+		default:
+		case FE_RESERVATION_FAILED:
+			dtdebugf("problem setting rf_input: ret={} {:s}", (int)ret, strerror(errno));
+			exit(-1);
+			break;
+		}
+	}
 
 	do_lnb_and_diseqc(fefd, frequency, pol_is_v);
 	return tune_it(fefd, frequency, pol_is_v);
@@ -973,12 +1010,12 @@ int tune_it(int fefd, int frequency_, bool pol_is_v) {
 			: (options.stream_id < 0 ? -1 : (options.stream_id & 0xff));
 		cmdseq.add(DTV_STREAM_ID, stream_id);
 	}
-#if 0
-	if (options.rf_in >=0) {
-		printf("select rf_in=%d\n", options.rf_in);
-		cmdseq.add(DTV_RF_INPUT, options.rf_in);
+	if(options.bbframes_mode) {
+		printf("Ask to output bbframes\n");
+		cmdseq.add(DTV_OUTPUT_BBFRAMES, 1);
 	}
-#endif
+
+
 	bool get_constellation = options.command == command_t::IQ;
 	auto num_constellation_samples = options.num_samples;
 	if (get_constellation) {
@@ -1163,14 +1200,6 @@ int do_lnb_and_diseqc(int fefd, int frequency, bool pol_is_v) {
 		13V = vertical or right-hand  18V = horizontal or low-hand
 		TODO: change this to 18 Volt when using positioner
 	*/
-	if (options.rf_in >=0) {
-		printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, (int32_t) options.rf_in))) {
-			printf("problem Setting rf_input\n");
-			return -1;
-		}
-	}
-
 	fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
 	if ((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
 		printf("problem Setting voltage\n");
