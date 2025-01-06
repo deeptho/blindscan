@@ -915,7 +915,7 @@ int clear(int fefd) {
 }
 
 int tune(int fefd, int frequency, bool pol_is_v) {
-	printf("Tuning to DVBS1/2 %.3f%c\n", frequency / 1000., pol_is_v ? 'V' : 'H');
+	dtdebugf("Tuning to DVBS1/2 {}{}\n", frequency / 1000., pol_is_v ? 'V' : 'H');
 	if (clear(fefd) < 0)
 		return -1;
 
