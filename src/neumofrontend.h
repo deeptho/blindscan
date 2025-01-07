@@ -8,6 +8,7 @@
  *		    Andre Draszik <ad@convergence.de>
  *		    for convergence integrated media GmbH
  *
+ * Copyright (C) 2020-2025 Deep Thought <deeptho@gmail.com> Blindscan interface
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
  * as published by the Free Software Foundation; either version 2.1
@@ -1061,8 +1062,8 @@ struct dtv_pls_search_list {
  *
  */
 struct dtv_fe_spectrum {
-	__u32 *freq;
-	__s32 *rf_level;
+	__u32 *freq;     //frequencies of spectrum will be returned in freq[num_freq]
+	__s32 *rf_level; //rf_level of spectrum  will be returned in rf_level[num_freq]
 	struct spectral_peak_t *candidates; //frequencies which were tried for locking are returned in candidate_frequencies[num_candidates]
 	__u32 num_freq;
 	__u32 num_candidates;
@@ -1201,7 +1202,6 @@ struct fe_rf_input_control {
 	enum fe_reservation_mode mode;
 };
 
-
 /*
  * When set, this flag will disable any zigzagging or other "normal" tuning
  * behavior. Additionally, there will be no automatic monitoring of the lock
@@ -1332,9 +1332,9 @@ struct dvb_frontend_parameters {
 	} u;
 };
 
-struct dvb_frontend_event { //size = 40 bytes
-	fe_status_t status; //size = 4 bytes
-	struct dvb_frontend_parameters parameters; //size = 36 bytes
+struct dvb_frontend_event {
+	fe_status_t status;
+	struct dvb_frontend_parameters parameters;
 };
 
 /* DVBv3 API calls */
