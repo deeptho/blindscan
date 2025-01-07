@@ -14,7 +14,31 @@ Always use the latest versions from both repositories, or make sure that the ver
 (e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
 
 
-# Spectrum Acquisition
+## Tuning and streaming multipple streams of a multistream mux
+
+The following works only on stid135.
+
+First tune to a mux, using adapter 8 and the LNB the cable connected to RF input 1. The LNB is connected to a swicth
+on uncommitted port 3. The mux we tune is 12606V on 5.0W. It uses physical layer srambling with code ROOT+16416.
+We ask the frontend to output bbframes instead of a stransport strea
+`neumo-tune -ctune -A blind -a 8 -r 1 -U3 -f 12606000 -pV --pls-code=ROOT+16416  --stream-id=4 -b`
+
+Now extract the two streams by connecting to frontend 0 on demux 8. We specify 0x2000 as the pid,
+which means the whole transport stream. the two streams have ISI 3 and 5:
+`neumo-dmx -a 8 -d 0 --pid 0x2000 -b   --bbframes-isi=4 > /tmp/stream4.ts &`
+`neumo-dmx -a 8 -d 0 --pid 0x2000 -b   --bbframes-isi=5 > /tmp/stream5.ts &`
+
+After a while stop the three commands (neumo-tune and neumo-dmx).
+Stream 4 is a regular transport stream as can be seen by inspecting it with
+`tsanalyze /tmp/stream4.ts'.
+
+Stream 5 is a transport stream containineg one T2mi stream with pid 0x1000. Extract it as follows:
+`tsp -P t2mi --pid=0x1000  < /tmp/stream5.ts > /tmp/stream5b.ts`
+Then it can be analyzed as follows:
+`tsanalyze /tmp/stream5b.ts'.
+
+
+## Spectrum Acquisition
 
 There are two methods of spectrum acquisition: `sweep` and `fft`. `sweep` sweeps across the frequency spectrum and measures
 narrow band power, taking into account AGC settings. `fft` uses the builtin fft engine on the stid135 chip to scan
@@ -22,12 +46,12 @@ the spectrum in very high resolution (100kHz per default, but 50kHz sometimes de
 
 The spectrum will be saved to `/tmp/spectrum_rf2_H.dat` and `/tmp/spectrum_rf2_V.dat`, or similarly named files.
 
-## Sweep method
+### Sweep method
 `neumo-blindscan  -c spectrum -U8 -a0  --rf-in=2 --spectrum-method sweep --spectral-resolution 2000`
 will perform a sweep scan with 2MHz resolution. On stid135 this is actually slower than fft scan.
 It will get a full spectrum in less 30 seconds with a resolution of 2MHz on tbs5927.
 
-## FFT method
+### FFT method
 `neumo-blindscan  -c spectrum -U8 -a0  --rf-in=2 --spectrum-method fft --spectral-resolution 100` will scan a satellite
 in less 30 seconds with a resolution of 100kHz on tbs6909x and tbs6903x. This is using the internal high speed fft engine.
 
@@ -45,7 +69,7 @@ It shows several narrow band transponders
 
 
 
-# Blindscan
+## Blindscan
 The blind scan code scans all or some of the frequency spectrum
 available on a DVB-S2 tuner. The scanned portion is the range
 [start-freq, end-freq]. Unless `-p` is specified, both polarizations
@@ -59,13 +83,13 @@ adds two codes to try.
 It is also possible to specify a range of ROOT+x codes to test. This option is very slow but
 will take around 90 minutes at most. Currently  this is not working on stid135.
 
-## Exhaustive scan
+### Exhaustive scan
 The spectrum is scanned in steps of step-freq. The default
 value is fine for scanning high symbolrate transponders.
 To scan low symbol rate transponders, set max-symbol-rate to a low value
 and star-freq close to where they might be.
 
-## Spectral peaks scan
+### Spectral peaks scan
 
 `neumo-blindscan  -c blindscan -U8 -a0  --rf-in=2 -pV --spectral-resolution 100` will connect adapter 0
 to RF input 2 and scan the full vertical band.
@@ -125,7 +149,7 @@ resolution setting o5 50kHz and can be tuned to reliably. The other one does not
 even though it can be done on Windows. So the drivers need some more improvement.
 
 
-## Parallel blindscan
+### Parallel blindscan
 
 On tbs6909x, blindscan can use all tuners
 
@@ -134,7 +158,7 @@ to RF input 2 and scan the full vertical band
 
 
 
-# Obtaining constellation samples
+## Obtaining constellation samples
 
 `neumo-tune -a 0 -U 8 -c iq -f 10719000 -pV  -n 8000` will connect to adapter 8, tune to 11138V  and obtain
 8000 IQ samples. The samples will be saved in `/tmp/iq_a0_10719.000V.dat`
@@ -146,7 +170,7 @@ pip3 install pandas
 
 
 
-# Blindscan tuning a single transponder
+## Blindscan tuning a single transponder
 
 `neumo-tune -a 0  -Ablind --rf-in=2 -U 8 -c tune -f 10719000 -pV` will connect adapter 0 to
 RF INPUT 2 on the card, send uncommitted switch command 8, tune to 10719V with the specified parameters  and then wait forever.
@@ -175,7 +199,7 @@ BLIND TUNE search-range=10000
 ```
 
 
-# Non-Blindscan tuning a single transponder
+## Non-Blindscan tuning a single transponder
 
 `./neumo-tune -a 0 --rf-in=2 -U 8 -c tune -f 10719000 -pV -S 27500 --delsys DVBS2 --modulation PSK_8` will connect adapter 0 to
 RF INPUT 2 on the card, send uncommitted switch command 8, tune to 10719V with the specified parameters  and then wait forever.
@@ -203,7 +227,7 @@ BLIND TUNE search-range=10000
 	FE_READ_STATUS: stat=543, signal=1 carrier=1 viterbi=1 sync=1 timedout=0 locked=1
 ```
 
-# Usage neumo-blindscan
+## Usage neumo-blindscan
 
 ```
 Usage: neumo-blindscan [OPTIONS] [L]
@@ -254,8 +278,21 @@ command will be sent twice. The switch ports are specified by the --uncommitted
 and --committed arguments
 
 
+## Usage neumo-dmx
+Stream dvb data from a demux to standard output
+Usage: DVB demux program [OPTIONS]
 
-# Usage neumo-tune
+Options:
+  -h,--help                   Print this help message and exit
+  -a,--adapter INT=0          Adapter number
+  -d,--demux INT=0            Demux number
+  -p,--pid INT=8192           pid (omit for full transport stream)
+  -b,--bbframes               Unpack a single embedded bbframes stream
+  --bbframes-pid INT=270      pid in which bbframes are embedded
+  --bbframes-isi INT=4        isi
+
+
+## Usage neumo-tune
 
 ```
 Usage: ./neumo-tune [OPTIONS]
@@ -275,7 +312,7 @@ Options:
   --delsys ENUM:value in {ATSC->11,ATSCMH->12,AUTO->22,CMMB->14,DAB->15,DCII->21,DSS->4,DTMB->13,DVBC->1,DVBC2->19,DVBH->7,DVBS->5,DVBS2->6,DVBS2X->20,DVBT->3,DVBT2->16,ISDBC->10,ISDBS->9,ISDBT->8,TURBO->17} OR {11,12,22,14,15,21,4,13,1,19,7,5,6,20,3,16,10,9,8,17}=6
                               Delivery system
   -R,--search-range INT=10000 Search range (kHz)
-  -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
+  -p,--pol INT:value in {H->1,V->2} OR {1,2}=0
                               Polarization to scan
   -n,--num-samples INT=1024   Number of IQ samples to fetch
   -f,--frequency INT=-1       Frequency to tune for getting IQ samples
@@ -286,12 +323,13 @@ Options:
   -T,--pls-search-timeout INT=25
                               Search range timeout
   -d,--diseqc TEXT=UC         DiSEqC command string (C: send committed command; U: send uncommitted command
+  -b,--bb_frames              Ask to outputput bbframes encapsulated in mpeg packets
   -U,--uncommitted INT=-1     Uncommitted switch number (lowest is 0)
   -C,--committed INT=-1       Committed switch number (lowest is 0)
 
 ```
 
-# Usage stid135-blindscan
+## Usage stid135-blindscan
 
 ```
 Usage: stid135-blindscan [OPTIONS]
@@ -321,8 +359,6 @@ Options:
   -S,--step-freq INT=6000     Frequency step (kHz)
   --spectral-resolution INT=0 Spectral resolution (kHz)
   -F,--fft-size INT=512       FFT size
-  -M,--max-symbol-rate INT=45000
-                              Maximal symbolrate (kHz)
   -R,--search-range INT=10000 Search range (kHz)
   -p,--pol INT:value in {BOTH->3,H->1,V->2} OR {3,1,2}=3
                               Polarisation to scan
