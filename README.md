@@ -3,10 +3,11 @@
 User space code for DVB blind-scanning, getting spectra and getting IQ constellation samples
 on tbs based DVB cards. Currently supports:
 
-* stid135-based cards: tbs6909x and tbs6903x
+* stid135-based cards: tbs6909x, tbs6903x, tbs6916
 * stv091x based cards: tbs5927
 * si2183 based cards: tbs6504
 * tas2101 based cards (incomplete): tbs5990, tbs6904
+* m88rs6060 based cards: tbs6904se
 
 The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
@@ -26,6 +27,7 @@ We ask the frontend to output bbframes instead of a stransport strea
 Now extract the two streams by connecting to frontend 0 on demux 8. We specify 0x2000 as the pid,
 which means the whole transport stream. the two streams have ISI 3 and 5:
 `neumo-dmx -a 8 -d 0 --pid 0x2000 -b   --bbframes-isi=4 > /tmp/stream4.ts &`
+
 `neumo-dmx -a 8 -d 0 --pid 0x2000 -b   --bbframes-isi=5 > /tmp/stream5.ts &`
 
 After a while stop the three commands (neumo-tune and neumo-dmx).
@@ -33,6 +35,7 @@ Stream 4 is a regular transport stream as can be seen by inspecting it with
 `tsanalyze /tmp/stream4.ts'.
 
 Stream 5 is a transport stream containineg one T2mi stream with pid 0x1000. Extract it as follows:
+
 `tsp -P t2mi --pid=0x1000  < /tmp/stream5.ts > /tmp/stream5b.ts`
 Then it can be analyzed as follows:
 `tsanalyze /tmp/stream5b.ts'.
