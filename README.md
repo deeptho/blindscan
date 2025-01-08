@@ -19,9 +19,10 @@ Always use the latest versions from both repositories, or make sure that the ver
 
 The following works only on stid135.
 
-First tune to a mux, using adapter 8 and the LNB the cable connected to RF input 1. The LNB is connected to a swicth
+First tune to a mux, using adapter 8 and the LNB the cable connected to RF input 1. The LNB is connected to a switch
 on uncommitted port 3. The mux we tune is 12606V on 5.0W. It uses physical layer srambling with code ROOT+16416.
-We ask the frontend to output bbframes instead of a stransport strea
+We ask the frontend to output bbframes instead of a stransport stream:
+
 `neumo-tune -ctune -A blind -a 8 -r 1 -U3 -f 12606000 -pV --pls-code=ROOT+16416  --stream-id=4 -b`
 
 Now extract the two streams by connecting to frontend 0 on demux 8. We specify 0x2000 as the pid,
