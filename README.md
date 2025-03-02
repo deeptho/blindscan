@@ -14,6 +14,8 @@ at https://github.com/deeptho/linux_media
 Always use the latest versions from both repositories, or make sure that the versions match
 (e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
 
+Specifically some features require that the kernel modules support at least neumodvb api 1.6
+
 
 ## Tuning and streaming multiple streams of a multistream mux
 
