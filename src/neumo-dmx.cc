@@ -54,13 +54,15 @@
 
 struct options_t {
 	int pid = 0x2000;
-	bool bbframes = false;
-	int bbframes_pid = 0x10e;
-	int bbframes_isi = 4;
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	int adapter_no{0};
 	int demux_no{0};
-	int32_t stream_id{-1}; //
+	//bool bbframes = false;
+	int stid_pid = -1;
+	int stid_stream_id = -1;
+	int t2mi_pid{-1};
+	int32_t t2mi_stream_id{0}; //
+	int32_t t2mi_plp{0}; //
 
 	options_t() = default;
 	int parse_options(int argc, char** argv);
@@ -75,10 +77,12 @@ int options_t::parse_options(int argc, char** argv) {
 
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("-d,--demux", demux_no, "Demux number", true);
+	app.add_option("--stid-pid", stid_pid, "pid in which stid bbframes are embedded", true);
+	app.add_option("--stid-isi", stid_stream_id, "stid isi", true);
+	app.add_option("--t2mi-pid", t2mi_pid, "pid in+ which t2mi stream is embedded", true);
+	//app.add_option("--t2mi-isi", t2mi_stream_id, "t2mi isi to extract", true);
+	app.add_option("--t2mi-plp", t2mi_plp, "t2mi plp to extract", true);
 	app.add_option("-p,--pid", pid, "pid (omit for full transport stream)", true);
-	app.add_flag("-b,--bbframes", bbframes, "Unpack a single embedded bbframes stream");
-	app.add_option("--bbframes-pid", bbframes_pid, "pid in which bbframes are embedded", true);
-	app.add_option("--bbframes-isi", bbframes_isi, "isi", true);
 
 	try {
 		app.parse(argc, argv);
@@ -186,7 +190,7 @@ int dmx_set_pes_filter(int demuxfd, int pid) {
 	pars.output = DMX_OUT_TSDEMUX_TAP;//DMX_OUT_TS_TAP;
 	pars.pes_type = DMX_PES_OTHER;
 	pars.flags = 0; //DMX_IMMEDIATE_START;
-	dtdebugf("Adding pid=0x{:x}\n", pid);
+	dtdebugf("PES: Adding pid=0x{:x}\n", pid);
 	if (ioctl(demuxfd, DMX_SET_PES_FILTER, &pars) < 0) {
 		dterrorf("DMX_SET_PES_FILTER  pid={} failed: {}", pid, strerror(errno));
 		return -1;
@@ -194,13 +198,28 @@ int dmx_set_pes_filter(int demuxfd, int pid) {
 	return 0;
 }
 
-int dmx_set_bbframes_filter(int demuxfd, int bbframes_pid, int bbframes_isi) {
-	struct dmx_bbframes_stream_params pars;
+int dmx_set_stid_stream(int demuxfd, int stid_pid, int stid_isi) {
+	struct dmx_stid_stream_params pars;
 	memset(&pars,0,sizeof(pars));
-	pars.embedding_pid = bbframes_pid;
-	pars.isi = bbframes_isi;
-	if (ioctl(demuxfd, DMX_SET_BBFRAMES_STREAM, &pars) < 0) {
-		dterrorf("DMX_SET_BBFRAMES_STREAM  pid={} isi={} failed: {}", bbframes_pid, bbframes_isi,
+	pars.embedding_pid = stid_pid;
+	pars.isi = stid_isi;
+	dtdebugf("STID: Adding pid=0x{:x}\n", stid_pid);
+	if (ioctl(demuxfd, DMX_SET_STID_STREAM, &pars) < 0) {
+		dterrorf("DMX_SET_STID_STREAM  pid={} isi={} failed: {}", stid_pid, stid_isi,
+						 strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
+int dmx_set_t2mi_stream(int demuxfd, int t2mi_pid, int t2mi_plp) {
+	struct dmx_t2mi_stream_params pars;
+	memset(&pars,0,sizeof(pars));
+	pars.embedding_pid = t2mi_pid;
+	pars.plp = t2mi_plp;
+	dtdebugf("T2MI: Adding pid=0x{:x}\n", t2mi_pid);
+	if (ioctl(demuxfd, DMX_SET_T2MI_STREAM, &pars) < 0) {
+		dterrorf("DMX_SET_T2MI_STREAM  pid={} plp={} failed: {}", t2mi_pid, t2mi_plp,
 						 strerror(errno));
 		return -1;
 	}
@@ -218,11 +237,16 @@ int main_dmx(int demuxfd) {
 	if(ioctl(demuxfd, DMX_SET_BUFFER_SIZE, dmx_buffer_size)) {
 		dterrorf("DMX_SET_BUFFER_SIZE failed: {}", strerror(errno));
 	}
-	if (options.bbframes) {
-		ret = dmx_set_bbframes_filter(demuxfd, options.bbframes_pid, options.bbframes_isi);
+	if (options.stid_pid >= 0) {
+		ret = dmx_set_stid_stream(demuxfd, options.stid_pid, options.stid_stream_id);
 		if(ret<0)
 			return ret;
 		}
+	if (options.t2mi_pid >= 0) {
+		ret = dmx_set_t2mi_stream(demuxfd, options.t2mi_pid, options.t2mi_plp);
+		if(ret<0)
+			return ret;
+	}
 	ret = dmx_set_pes_filter(demuxfd, options.pid);
 	if(ret<0)
 		return ret;
@@ -278,3 +302,39 @@ int main(int argc, char** argv) {
 	auto ret = main_dmx(demuxfd);
 	return ret;
 }
+
+
+
+/*
+
+ 1. Optionally select a stream for internal decoding
+    DMX_SET_BBFRAMES_STREAM: reads a single pid and transforms it into a transport stream
+		                         (which is emdedded in the pid according to an stid-specific format)
+
+    DMX_SET_T2MI_STREAM: reads a single pid and transforms it into a transport stream
+		                         (which is emdedded in the pid according to t2mi)
+
+		DMX_SET_GSE_STREAM: future expansion
+
+		The end result is always a transportstream
+
+ 2. Now repeat 2 if desired. e.g. RAI mux 5 on 12606V:
+       DMX_SET_PES_GFILTER (to define where output goes. DMX_SET_FILTER is not supported (too complex)
+			 DMX_SET_BBFRAMES_STREAM to extract stream 5 into a 2nd level transport stream
+			 DMX_SET_T2MI_STREAM to extract a t2mi stream into a 3d level transport stream
+
+ 3. Select desired output:
+    DMX_SET_FILTER: sections
+		DMX_SET_PES_FILTER: a transport stream (possibly containing bbframes)
+
+		Legacy code requires also specifying a PID, which is confusing.
+		Best create a new ioctl
+
+ 4. Add additional pids desired as output using DMX_ADD_PID
+    We could make a new ioctl that combines several of these calls
+
+
+   Instead of the DMX_SET_FILTER, we could add an output format to ADD_PID, which can
+	 e.g., extract sections or raw bbframes
+
+ */

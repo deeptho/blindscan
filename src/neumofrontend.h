@@ -699,7 +699,7 @@ enum fe_interleaving {
 #define DTV_HEARTBEAT 87
 #define DTV_BITRATE 88
 #define DTV_LOCKTIME 89
-#define DTV_MATYPE_LIST		90 //retrieve list of present matypesand stream_ids
+#define DTV_MATYPE_LIST		90 //retrieve list of present matypes and stream_ids
 #define DTV_RF_INPUT 91
 #define DTV_SET_SEC_CONFIGURED 92
 #define DTV_OUTPUT_BBFRAMES 93

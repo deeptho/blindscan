@@ -15,7 +15,7 @@ Always use the latest versions from both repositories, or make sure that the ver
 (e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
 
 
-## Tuning and streaming multipple streams of a multistream mux
+## Tuning and streaming multiple streams of a multistream mux
 
 The following works only on stid135.
 
@@ -40,6 +40,17 @@ Stream 5 is a transport stream containineg one T2mi stream with pid 0x1000. Extr
 `tsp -P t2mi --pid=0x1000  < /tmp/stream5.ts > /tmp/stream5b.ts`
 Then it can be analyzed as follows:
 `tsanalyze /tmp/stream5b.ts'.
+
+## Tuning and streaming a T2MI stream
+
+First tune to a mux 12606V on adapter 8, and optionally specify the default stream_id 4
+`neumo-tune -ctune -A blind -a 8 -r 1 -U3 -f 12606000 -pV --pls-code=ROOT+16416  --stream-id=4 -b`
+
+Then ask the demux to select stream 5 embedded in pid 270 from adapter 8. Also ask it to then
+internally demux the T2MI stream embedded in pid 4096 to a transport stream. Then ask that this transport
+stream is extracted full by specifying the fake pid 0x2000 that means ``full transport stream''
+
+`neumo-dmx -a 8 -d 0 --stid-isi=5 --stid-pid=270 --t2mi-pid=4096 --t2mi-plp=0 --pid 0x2000  > /tmp/stream5.ts`
 
 
 ## Spectrum Acquisition
