@@ -28,7 +28,7 @@
 
 
 #define DMX_FILTER_SIZE 16
-
+#define T2MI_UNSPECIFIED_PLP (-2) //indicates that the stream is expected to contain one isi and to use that one
 /**
  * enum dmx_output - Output for the demux.
  *

@@ -53,16 +53,15 @@
 #include <values.h>
 
 struct options_t {
-	int pid = 0x2000;
+	std::vector<int> pids = {};
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	int adapter_no{0};
 	int demux_no{0};
 	//bool bbframes = false;
 	int stid_pid = -1;
-	int stid_stream_id = -1;
+	int stid_isi = -1;
 	int t2mi_pid{-1};
-	int32_t t2mi_stream_id{0}; //
-	int32_t t2mi_plp{0}; //
+	int32_t t2mi_plp{T2MI_UNSPECIFIED_PLP}; //
 
 	options_t() = default;
 	int parse_options(int argc, char** argv);
@@ -78,11 +77,10 @@ int options_t::parse_options(int argc, char** argv) {
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("-d,--demux", demux_no, "Demux number", true);
 	app.add_option("--stid-pid", stid_pid, "pid in which stid bbframes are embedded", true);
-	app.add_option("--stid-isi", stid_stream_id, "stid isi", true);
+	app.add_option("--stid-isi", stid_isi, "stid isi", true);
 	app.add_option("--t2mi-pid", t2mi_pid, "pid in+ which t2mi stream is embedded", true);
-	//app.add_option("--t2mi-isi", t2mi_stream_id, "t2mi isi to extract", true);
-	app.add_option("--t2mi-plp", t2mi_plp, "t2mi plp to extract", true);
-	app.add_option("-p,--pid", pid, "pid (omit for full transport stream)", true);
+	app.add_option("--t2mi-plp", t2mi_plp, "t2mi isi to extract", true);
+	app.add_option("--pid", pids, "pid (omit for full transport stream)", true);
 
 	try {
 		app.parse(argc, argv);
@@ -190,9 +188,19 @@ int dmx_set_pes_filter(int demuxfd, int pid) {
 	pars.output = DMX_OUT_TSDEMUX_TAP;//DMX_OUT_TS_TAP;
 	pars.pes_type = DMX_PES_OTHER;
 	pars.flags = 0; //DMX_IMMEDIATE_START;
-	dtdebugf("PES: Adding pid=0x{:x}\n", pid);
+	dtdebugf("PES: Adding pid={}\n", pid);
 	if (ioctl(demuxfd, DMX_SET_PES_FILTER, &pars) < 0) {
 		dterrorf("DMX_SET_PES_FILTER  pid={} failed: {}", pid, strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
+int dmx_add_pid(int demuxfd, int pid) {
+	struct dmx_pes_filter_params pars;
+	dtdebugf("PES: Adding pid={}\n", pid);
+	if (ioctl(demuxfd, DMX_ADD_PID, &pid) < 0) {
+		dterrorf("DMX_ADD_PID  pid={} failed: {}", pid, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -216,7 +224,7 @@ int dmx_set_t2mi_stream(int demuxfd, int t2mi_pid, int t2mi_plp) {
 	struct dmx_t2mi_stream_params pars;
 	memset(&pars,0,sizeof(pars));
 	pars.embedding_pid = t2mi_pid;
-	pars.plp = t2mi_plp;
+	pars.plp = t2mi_plp; //not that drivers currently do not support setting this
 	dtdebugf("T2MI: Adding pid=0x{:x}\n", t2mi_pid);
 	if (ioctl(demuxfd, DMX_SET_T2MI_STREAM, &pars) < 0) {
 		dterrorf("DMX_SET_T2MI_STREAM  pid={} plp={} failed: {}", t2mi_pid, t2mi_plp,
@@ -238,7 +246,7 @@ int main_dmx(int demuxfd) {
 		dterrorf("DMX_SET_BUFFER_SIZE failed: {}", strerror(errno));
 	}
 	if (options.stid_pid >= 0) {
-		ret = dmx_set_stid_stream(demuxfd, options.stid_pid, options.stid_stream_id);
+		ret = dmx_set_stid_stream(demuxfd, options.stid_pid, options.stid_isi);
 		if(ret<0)
 			return ret;
 		}
@@ -247,7 +255,18 @@ int main_dmx(int demuxfd) {
 		if(ret<0)
 			return ret;
 	}
-	ret = dmx_set_pes_filter(demuxfd, options.pid);
+	if (options.pids.size()==0)
+		ret = dmx_set_pes_filter(demuxfd, 0x2000);
+	else {
+		ret = dmx_set_pes_filter(demuxfd, options.pids[0]);
+		for(auto it = options.pids.begin()+1; it != options.pids.end(); ++it) {
+			auto pid = *it;
+			printf("adding pid=%d\n", pid);
+			ret = dmx_add_pid(demuxfd, pid);
+			if(ret<0)
+				return ret;
+		}
+	}
 	if(ret<0)
 		return ret;
 	if(ioctl (demuxfd, DMX_START)<0) {
