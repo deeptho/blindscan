@@ -57,7 +57,7 @@ struct options_t {
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	int adapter_no{0};
 	int demux_no{0};
-	//bool bbframes = false;
+	bool fe_stream{false};
 	int stid_pid = -1;
 	int stid_isi = -1;
 	int t2mi_pid{-1};
@@ -76,6 +76,7 @@ int options_t::parse_options(int argc, char** argv) {
 
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("-d,--demux", demux_no, "Demux number", true);
+	app.add_flag("--fe-stream", fe_stream, "directly address the frontend");
 	app.add_option("--stid-pid", stid_pid, "pid in which stid bbframes are embedded", true);
 	app.add_option("--stid-isi", stid_isi, "stid isi", true);
 	app.add_option("--t2mi-pid", t2mi_pid, "pid in+ which t2mi stream is embedded", true);
@@ -90,6 +91,7 @@ int options_t::parse_options(int argc, char** argv) {
 	}
 	printf("adapter=%d\n", adapter_no);
 	printf("demux=%d\n", demux_no);
+	printf("fe_stream=%d\n", fe_stream);
 	return 0;
 }
 
@@ -206,6 +208,15 @@ int dmx_add_pid(int demuxfd, int pid) {
 	return 0;
 }
 
+int dmx_set_fe_stream(int demuxfd) {
+	dtdebugf("set fe stream\n");
+	if (ioctl(demuxfd, DMX_SET_FE_STREAM) < 0) {
+		dterrorf("DMX_SET_FE_STREAM failed: {}", strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
 int dmx_set_stid_stream(int demuxfd, int stid_pid, int stid_isi) {
 	struct dmx_stid_stream_params pars;
 	memset(&pars,0,sizeof(pars));
@@ -245,6 +256,11 @@ int main_dmx(int demuxfd) {
 	if(ioctl(demuxfd, DMX_SET_BUFFER_SIZE, dmx_buffer_size)) {
 		dterrorf("DMX_SET_BUFFER_SIZE failed: {}", strerror(errno));
 	}
+	if (options.fe_stream) {
+		ret = dmx_set_fe_stream(demuxfd);
+		if(ret<0)
+			return ret;
+		}
 	if (options.stid_pid >= 0) {
 		ret = dmx_set_stid_stream(demuxfd, options.stid_pid, options.stid_isi);
 		if(ret<0)

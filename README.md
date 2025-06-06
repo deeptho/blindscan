@@ -54,6 +54,23 @@ stream is extracted full by specifying the fake pid 0x2000 that means ``full tra
 
 `neumo-dmx -a 8 -d 0 --stid-isi=5 --stid-pid=270 --t2mi-pid=4096 --t2mi-plp=0 --pid 0x2000  > /tmp/stream5.ts`
 
+## Tuning and streaming a GSE or GCS stream
+
+The following works only on stid135.
+
+First tune to the mux containing the GSE or GCS stream. For example, tune to the NRK dab  mux on 5.0W:
+`neumo-tune -ctune -A blind -a 8 -r 0 -dU -U2 -s 171 -f 10717000 -pV  -S 5400`
+
+The the following command will stream save the bbframes of this GSE stream to an output file:
+`neumo-dmx  -a 8  --fe-stream --pid=270 > /tmp/out.ts`
+Note that the output file conists of bbframes encapsulated in a transport stream. Only pid=270
+will work because that is the one selected by the stid135 chip.
+
+A command like the following can be used to decode the dab stream:
+`neumo-dmx  -a 8  --fe-stream --pid=270 | pts2bbf | bbfedi2eti -dst-ip 239.199.2.1 -dst-port 1234 | dablin_gtk`
+This involves extracting the bbframes, then extracting eti data from the bbframes stream and sending the
+results to dablin_gtk.
+
 
 ## Spectrum Acquisition
 
