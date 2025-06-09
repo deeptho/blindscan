@@ -34,11 +34,11 @@ You may also need small changes depending on where bbframe-tools and eti-tools c
 your computer. Sometimes the commands may not work as the eti-tools are a bit buggy. Then retry the demux
 command a  few times. Also check that neumo-tune's output shows that the mux has indeed been locked.
 
-### NRK 10717V@0.8W
+### NRK 10716V@0.8W
 
 * Tune:
 
-    ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U2 -s 171 -f 10717000 -pV  -S 5400``
+    ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U2 -s 171 -f 10716000 -pV  -S 5400``
 
 * demux:
 
@@ -47,7 +47,7 @@ command a  few times. Also check that neumo-tune's output shows that the mux has
 
 You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in the range 1...8.
 
-### ERT 12241H@39.0W
+### ERT 12241H@39.0E
 
 * Tune:
 
