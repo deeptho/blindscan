@@ -89,9 +89,11 @@ int options_t::parse_options(int argc, char** argv) {
 		app.exit(e);
 		return -1;
 	}
-	printf("adapter=%d\n", adapter_no);
-	printf("demux=%d\n", demux_no);
-	printf("fe_stream=%d\n", fe_stream);
+#if 0
+	dtdebugf(sterr, "adapter=%d\n", adapter_no);
+	dtdebugf(stderr, "demux=%d\n", demux_no);
+	dtdebugf(stderr, "fe_stream=%d\n", fe_stream);
+#endif
 	return 0;
 }
 
