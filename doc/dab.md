@@ -58,7 +58,7 @@ You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in th
       ``neumo-dmx  -a 8 --pid=1010  | ~/tsniv2ni/tsniv2ni 1010 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
 
 
-### RAI 11727V@9.0E
+### DAB Italia 11727V@9.0E
 
 * Tune:
 
