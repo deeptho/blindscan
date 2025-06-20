@@ -42,7 +42,7 @@ command a  few times. Also check that neumo-tune's output shows that the mux has
 
 * demux:
 
-      ``neumo-dmx  -a 8  --fe-stream --pid=270  | ~/bbframe-tools/pts2bbf 270 | ~/eti-tools/bbfedi2eti -dst-ip 239.199.2.1 -dst-port 1234 | ~/dablin/build/src/dablin_gtk
+    ``neumo-dmx  -a 8  --fe-stream --pid=270  | ~/bbframe-tools/pts2bbf 270 | ~/eti-tools/bbfedi2eti -dst-ip 239.199.2.1 -dst-port 1234 | ~/dablin/build/src/dablin_gtk``
 
 
 You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in the range 1...8.
@@ -51,11 +51,10 @@ You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in th
 
 * Tune:
 
-    ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U14  -f 12241336 -pH  -S 13382``
+   ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U14  -f 12241336 -pH  -S 13382``
 
 * demux:
-
-      ``neumo-dmx  -a 8 --pid=1010  | ~/tsniv2ni/tsniv2ni 1010 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
+  ``neumo-dmx  -a 8 --pid=1010  | ~/tsniv2ni/tsniv2ni 1010 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
 
 
 ### DAB Italia 11727V@9.0E
@@ -66,11 +65,11 @@ You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in th
 
 * demux:
 
-      ``neumo-dmx  -a 8 --pid=7031  | ~/tsniv2ni/tsniv2ni 7031 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
+  ``neumo-dmx  -a 8 --pid=7031  | ~/tsniv2ni/tsniv2ni 7031 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
 
-      For the second mux:
+  For the second mux:
 
-      ``neumo-dmx  -a 8 --pid=7131  | ~/tsniv2ni/tsniv2ni 7131 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
+  ``neumo-dmx  -a 8 --pid=7131  | ~/tsniv2ni/tsniv2ni 7131 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
 
 
 
@@ -82,7 +81,7 @@ You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in th
 
 * demux:
 
-      ``neumo-dmx  -a 8 --pid=1061  | ~/eti-tools/ts2na --pid 1061 | ~/eti-tools/na2ni | ~/dablin/build/src/dablin_gtk 2>/dev/null``
+  ``neumo-dmx  -a 8 --pid=1061  | ~/eti-tools/ts2na --pid 1061 | ~/eti-tools/na2ni | ~/dablin/build/src/dablin_gtk 2>/dev/null``
 
 You can also choose other values for the pid value in the range 1061...1065
 
@@ -91,11 +90,11 @@ You can also choose other values for the pid value in the range 1061...1065
 
 * Tune:
 
-    ``neumo-tune -ctune -A blind -a 8 -r 0 -dCUCU -C2 -U10  -f 12568443 -pV  -S 17017``
+  ``neumo-tune -ctune -A blind -a 8 -r 0 -dCUCU -C2 -U10  -f 12568443 -pV  -S 17017``
 
 * demux:
 
-      ``neumo-dmx  -a 8 --pid=101  | ~/eti-tools/fedi2eti 101 239.132.1.50 5004 | ~/dablin/build/src/dablin_gtk``
+  ``neumo-dmx  -a 8 --pid=101  | ~/eti-tools/fedi2eti 101 239.132.1.50 5004 | ~/dablin/build/src/dablin_gtk``
 
 You can also use other values for the ip. See https://github.com/piratfm/eti-tools for a long list.
 
@@ -109,10 +108,11 @@ You can also use other values for the ip. See https://github.com/piratfm/eti-too
 
 * demux:
 
-      ``neumo-dmx  -a 8 --pid=3000   | !/eti-tools/fedi2eti 3000 228.10.1.5 10010 | ~/dablin/build/src/dablin_gtk``
+  ``neumo-dmx  -a 8 --pid=3000   | ~/eti-tools/fedi2eti 3000 228.10.1.5 10010 | ~/dablin/build/src/dablin_gtk``
 
   For the second mux:
-      ``neumo-dmx  -a 8 --pid=3000   | !/eti-tools/fedi2eti 3000 228.10.2.5 10010 | ~/dablin/build/src/dablin_gtk``
+
+  ``neumo-dmx  -a 8 --pid=3000   | ~/eti-tools/fedi2eti 3000 228.10.2.5 10010 | ~/dablin/build/src/dablin_gtk``
 
 
 ### Bundesmux 12168V@23.5E
@@ -123,25 +123,27 @@ You can also use other values for the ip. See https://github.com/piratfm/eti-too
 
 * demux:
 
-      ``neumo-dmx  -a 8 --pid=4121 | ~/eti-tools/fedi2eti 4121 239.128.43.43 50043 | ~/dablin/build/src/dablin_gtk``
+   ``neumo-dmx  -a 8 --pid=4121 | ~/eti-tools/fedi2eti 4121 239.128.43.43 50043 | ~/dablin/build/src/dablin_gtk``
 
 
   For the second mux:
-      ``neumo-dmx  -a 8 --pid=4122 | ~/eti-tools/fedi2eti 4122 239.128.72.10 50010 | ~/dablin/build/src/dablin_gtk``
+  
+    ``neumo-dmx  -a 8 --pid=4122 | ~/eti-tools/fedi2eti 4122 239.128.72.10 50010 | ~/dablin/build/src/dablin_gtk``
 
 ### Metropolitain 11461H@5.0W
 
 * Tune:
 
-    ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U0  -f 11461000 -pH  -S 5780``
+  ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U0  -f 11461000 -pH  -S 5780``
 
 * demux:
 
-      ``neumo-dmx -a 8 --pid=301 | !/eti-tools/fedi2eti  301 239.0.1.11 5001 | ~/dablin/build/src/dablin_gtk``
+  ``neumo-dmx -a 8 --pid=301 | ~/eti-tools/fedi2eti  301 239.0.1.11 5001 | ~/dablin/build/src/dablin_gtk``
 
 
   For the second mux:
-      ``neumo-dmx -a 8 --pid=301 | !/eti-tools/fedi2eti  301 239.0.1.12 5002 | ~/dablin/build/src/dablin_gtk``
+
+  ``neumo-dmx -a 8 --pid=301 | ~/eti-tools/fedi2eti  301 239.0.1.12 5002 | ~/dablin/build/src/dablin_gtk``
 
 
 
