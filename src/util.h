@@ -32,7 +32,7 @@
 #define dtdebugf(fmt, args...)																					\
 	do {																																	\
 		auto __msg = std::format(fmt, ##args);															\
-		fprintf(stderr, "Debug %s", __msg.c_str());													\
+		fprintf(stderr, "%s", __msg.c_str());													\
 	} while(0)
 
 
