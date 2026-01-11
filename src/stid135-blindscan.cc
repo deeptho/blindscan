@@ -179,10 +179,13 @@ class scanner_t {
 	int next_to_scan{0};
 	FILE* fpout_bs{0};
 	std::vector<uint16_t> matype_list; //size needs to be 256 in current implementation
-
+	frontend_t* spectrum_fft_fe {nullptr};
+	frontend_t* spectrum_sweep_fe {nullptr};
 	std::vector<frontend_t> frontends;
 	std::vector<std::thread> threads;
-	int scan_band(int start_freq, int end_freq, int band, bool pol_is_v, bool append);
+	int num_peaks{0};
+	int num_locked{0};
+	std::tuple<int, int> scan_band(int start_freq, int end_freq, int band, bool pol_is_v, bool append);
 public:
 	scanner_t() = default;
 	int scan();
@@ -210,9 +213,13 @@ struct frontend_t {
 	int band{0};
 	bool pol_is_v{false};
 	bool supports_spectrum_fft{false};
+	bool supports_spectrum_sweep{false};
 	std::vector<int8_t> rf_inputs;
 	char message[512];
 	std::string adapter_name;
+	int num_peaks{0};
+	int num_locked{0};
+
 	int create_poll();
 	//returns -1 on error, else 0
 	int open(int adapter_no, int frontend_no);
@@ -281,12 +288,25 @@ void scanner_t::open_frontends() {
 		if(fe.init(adapter_no, options.frontend_no)==0) {
 			if(fe.can_use_rf_in(options.rf_in)) {
 					frontends.push_back(fe);
-					printf("\t%s RF_IN=%d FFT=%s\n", fe.adapter_name.c_str(), options.rf_in,
-								 fe.supports_spectrum_fft ? "Yes" : "No");
-				}
+					printf("\t%s RF_IN=%d FFT=%s SWEEP=%s\n", fe.adapter_name.c_str(), options.rf_in,
+								 fe.supports_spectrum_fft ? "Yes" : "No",
+								 fe.supports_spectrum_sweep ? "Yes" : "No");
+					if (fe.supports_spectrum_fft && !spectrum_fft_fe)
+						spectrum_fft_fe = &fe;
+					if (fe.supports_spectrum_sweep && ! spectrum_sweep_fe)
+						spectrum_sweep_fe = &fe;
+			} else {
+				printf("\tError: One or more frontends cannot use rf_in=%d\n", options.rf_in);
+				exit(1);
+			}
 		} else {
+			printf("\tError: Failed to init frontend: adapter_no=%d frontend_no=%d\n", adapter_no, options.frontend_no);
 			exit(1);
 		}
+	}
+	if(!spectrum_sweep_fe  && ! spectrum_fft_fe) {
+		printf("\tError: None of the specified adapters support spectrum acquisition\n");
+		exit(1);
 	}
 }
 
@@ -298,18 +318,20 @@ void scanner_t::close_frontends() {
 }
 
 
-int scanner_t::scan_band(int start_freq, int end_freq, int band, bool pol_is_v, bool append) {
+std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band, bool pol_is_v,
+																					bool append) {
 	if(frontends.size() < 1)
-		return -1;
+		return {-1, -1};
 	next_to_scan = 0;
-	auto& fe = frontends[0];
-	fe.select_band(band, pol_is_v);
-	for (int i=1; i <frontends.size(); ++i) {
+	auto* spectrum_fe = spectrum_fft_fe ? spectrum_fft_fe : spectrum_sweep_fe;
+	spectrum_fe->select_band(band, pol_is_v);
+	for (int i=0; i <frontends.size(); ++i) {
 			auto& fe = frontends[i];
-			fe.set_rf_input();
+			if(&fe != spectrum_fe)
+				fe.set_rf_input();
 	}
 	std::tie(spectral_peaks, freq, rf_level) =
-		fe.spectrum_band(start_freq, end_freq);
+		spectrum_fe->spectrum_band(start_freq, end_freq);
 	printf("Found %ld peaks\n", spectral_peaks.size());
 	if(options.save_spectrum) {
 		save_spectrum(0, pol_is_v, append);
@@ -319,14 +341,21 @@ int scanner_t::scan_band(int start_freq, int end_freq, int band, bool pol_is_v, 
 		open_output();
 
 	for(auto& fe: frontends) {
-		threads.emplace_back(std::thread(&frontend_t::task, fe, band, pol_is_v));
+		threads.emplace_back(std::thread(&frontend_t::task, std::ref(fe), band, pol_is_v));
 	}
 
 	for(auto& t: threads) {
 		t.join();
 	}
+	int num_locked{0};
+	int num_peaks{0};
+	for(auto& fe: frontends) {
+		num_locked += fe.num_locked;
+		num_peaks += fe.num_peaks;
+	}
+	printf("Locked=%d of %d peaks\n", num_locked, num_peaks);
 	threads.clear();
-	return 0;
+	return {num_locked, num_peaks};
 }
 
 
@@ -722,7 +751,6 @@ struct cmdseq_t {
 		if (dotune)
 			add(DTV_TUNE, 0);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
-			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
 			return -errno;
 		}
 		return 0;
@@ -1012,7 +1040,7 @@ int do_lnb_and_diseqc(int fefd, int band, bool pol_is_v) {
 	if (options.rf_in >=0) {
 		//printf("select rf_in=%d\n", options.rf_in);
 		if ((ret = ioctl(fefd, FE_SET_RF_INPUT_LEGACY, (int32_t) options.rf_in))) {
-			scanner.xprintf("problem Setting rf_input\n");
+			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
 			exit(1);
 		}
 	}
@@ -1076,6 +1104,7 @@ int frontend_t::get_extended_frontend_info() {
 
 	adapter_name = fe_info.adapter_name;
 	supports_spectrum_fft = fe_info.extended_caps & FE_CAN_SPECTRUM_FFT;
+	supports_spectrum_sweep = fe_info.extended_caps & FE_CAN_SPECTRUM_SWEEP;
 	for(int i=0; i < fe_info.num_rf_inputs; ++i)
 		rf_inputs.push_back(fe_info.rf_inputs[i]);
 #if 0
@@ -1134,7 +1163,7 @@ int frontend_t::set_rf_input() {
 	if (options.rf_in >=0) {
 		//printf("select rf_in=%d\n", options.rf_in);
 		if ((ret = ioctl(fefd, FE_SET_RF_INPUT_LEGACY, (int32_t) options.rf_in))) {
-			scanner.xprintf("problem Setting rf_input\n");
+			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
 			exit(1);
 		}
 	}
@@ -1539,8 +1568,10 @@ int frontend_t::scan_peak(spectral_peak_t& peak) {
 		xprintf("\ttimed out\n", count);
 		return 0;
 	}
+	num_peaks++;
 	if (locked) {
 		auto band  = band_for_freq(peak.freq);
+		num_locked++;
 		save_info(adapter_no, band, pol_is_v);
 		return 0;
 	} else {
@@ -1637,7 +1668,10 @@ int scanner_t::scan() {
 
 		if (options.end_freq > lnb_universal_slof) {
 			// scanning (part of) high band
-			scan_band(std::max(options.start_freq, lnb_universal_slof), options.end_freq, 1, pol_is_v, append);
+			auto [num_locked_, num_peaks_] = \
+				scan_band(std::max(options.start_freq, lnb_universal_slof), options.end_freq, 1, pol_is_v, append);
+			num_peaks += num_peaks_;
+			num_locked += num_locked_;
 		}
 	}
 	if(fpout_bs) {
@@ -1645,6 +1679,9 @@ int scanner_t::scan() {
 		sort_output();
 		}
 	close_frontends();
+	printf("=======================================\n");
+	printf("Total: locked=%d of %d peaks\n", num_locked, num_peaks);
+
 	return 0;
 }
 
