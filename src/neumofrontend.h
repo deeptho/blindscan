@@ -1184,7 +1184,8 @@ enum fe_ioctl_result {
 	FE_RESERVATION_RELEASED = 4,
 	FE_RESERVATION_NOT_SUPPORTED = 5,
 	FE_UNICABLE_DISEQC_RETRY = 10, //another frontend has started a unicable command. Retry later
-	FE_RESERVATION_FAILED = -1
+	FE_RESERVATION_FAILED = -1,
+	FE_RESERVATION_EINVAL = -EINVAL,
 };
 
 enum fe_reservation_mode {
