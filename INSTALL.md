@@ -1,3 +1,9 @@
+The following info is incomplete
+
+# Installing on Fedora
+Install prerequisites:
+```sudo dnf install libconfig-devel```
+
 
 
 # Installing on Ubuntu

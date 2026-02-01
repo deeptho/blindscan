@@ -18,8 +18,8 @@
  *
  */
 #include "CLI/CLI.hpp"
-#include "neumofrontend.h"
-#include "neumodmx.h"
+#include "neumo-frontend.h"
+#include "neumo-dmx.h"
 #include "util.h"
 #include <algorithm>
 #include <format>

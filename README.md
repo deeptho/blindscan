@@ -1,3 +1,5 @@
+
+
 # Neumo-blindscan
 
 User space code for DVB blind-scanning, getting spectra and getting IQ constellation samples
@@ -13,6 +15,17 @@ The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
 Always use the latest versions from both repositories, or make sure that the versions match
 (e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
+
+#Important
+
+This code requires specific versions of neumo drivers to be loaded
+* Versions up to and including release-1.3 use older neumo drivers, which can be found in
+**  https://github.com/deeptho/neumo_media_build
+** https://github.com/deeptho/linux_media
+* Versions above release-1.3 use newer neumo drivers, which can be found in
+
+
+
 
 Specifically some features require that the kernel modules support at least neumodvb api 1.6.
 
