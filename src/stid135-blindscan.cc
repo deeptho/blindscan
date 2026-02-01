@@ -54,7 +54,6 @@
 #include <unistd.h>
 #include <values.h>
 
-
 int tune_it(int fefd, int frequency_, int symbolrate, int band, bool pol_is_v);
 int do_lnb_and_diseqc(int fefd, int frequency, int band, bool pol_is_v);
 int tune(int fefd, int frequency, int band, bool pol_is_v);
@@ -1043,8 +1042,13 @@ int do_lnb_and_diseqc(int fefd, int band, bool pol_is_v) {
 		TODO: change this to 18 Volt when using positioner
 	*/
 	if (options.rf_in >=0) {
+		struct fe_rf_input_control ic;
+		ic.owner = getpid();
+		ic.config_id = 1 ;
+		ic.rf_in = options.rf_in;
+		ic.mode = FE_RESERVATION_MODE_MASTER;
 		//printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT_LEGACY, (int32_t) options.rf_in))) {
+		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, &ic))) {
 			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
 			exit(1);
 		}
@@ -1166,8 +1170,14 @@ int frontend_t::set_rf_input() {
 	int ret;
 
 	if (options.rf_in >=0) {
+		struct fe_rf_input_control ic;
+		ic.owner = getpid();
+		ic.config_id = 1 ;
+		ic.rf_in = options.rf_in;
+		ic.mode = FE_RESERVATION_MODE_MASTER;
+
 		//printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT_LEGACY, (int32_t) options.rf_in))) {
+		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, &ic))) {
 			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
 			exit(1);
 		}
@@ -1706,6 +1716,7 @@ int main(int argc, char** argv) {
 		printf("!!!!Blindscan drivers not installed!!!\n");
 		exit(1);
 	}
+	set_console_logging(true);
 	int ret=0;
 	switch(options.command) {
 	case command_t::BLINDSCAN: {

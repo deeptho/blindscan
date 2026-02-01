@@ -102,3 +102,5 @@ inline void log4cxx_store_threadname()
 	assert(strlen(thread_name)>0);
 	log4cxx::MDC::put( "thread_name", thread_name);
 }
+
+void set_console_logging(bool on);

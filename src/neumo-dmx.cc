@@ -94,13 +94,13 @@ int options_t::parse_options(int argc, char** argv) {
 	}
 
 	if(options.extract_es  && ( options.pids.size() != 1 || options.pids[0] == 0x2000)) {
-		dtdebugf("Error: can only extract elementary stream for a single pid\n");
+		dtdebugf("Error: can only extract elementary stream for a single pid");
 		exit(1);
 	}
 #if 0
-	dtdebugf("adapter=%d\n", adapter_no);
-	dtdebugf("demux=%d\n", demux_no);
-	dtdebugf("fe_stream=%d\n", fe_stream);
+	dtdebugf("adapter=%d", adapter_no);
+	dtdebugf("demux=%d", demux_no);
+	dtdebugf("fe_stream=%d", fe_stream);
 #endif
 	return 0;
 }
@@ -200,7 +200,7 @@ int dmx_set_pes_filter(int demuxfd, int pid, bool extract_es) {
 	pars.output = extract_es ? DMX_OUT_DEMUX_TAP:  DMX_OUT_TSDEMUX_TAP;//DMX_OUT_TS_TAP;
 	pars.pes_type = DMX_PES_OTHER;
 	pars.flags = 0; //DMX_IMMEDIATE_START;
-	dtdebugf("PES: Adding pid={}\n", pid);
+	dtdebugf("PES: Adding pid={}", pid);
 	if (ioctl(demuxfd, DMX_SET_PES_FILTER, &pars) < 0) {
 		dterrorf("DMX_SET_PES_FILTER  pid={} failed: {}", pid, strerror(errno));
 		return -1;
@@ -210,7 +210,7 @@ int dmx_set_pes_filter(int demuxfd, int pid, bool extract_es) {
 
 int dmx_add_pid(int demuxfd, int pid) {
 	struct dmx_pes_filter_params pars;
-	dtdebugf("PES: Adding pid={}\n", pid);
+	dtdebugf("PES: Adding pid={}", pid);
 	if (ioctl(demuxfd, DMX_ADD_PID, &pid) < 0) {
 		dterrorf("DMX_ADD_PID  pid={} failed: {}", pid, strerror(errno));
 		return -1;
@@ -219,7 +219,7 @@ int dmx_add_pid(int demuxfd, int pid) {
 }
 
 int dmx_set_fe_stream(int demuxfd) {
-	dtdebugf("set fe stream\n");
+	dtdebugf("set fe stream");
 	if (ioctl(demuxfd, DMX_SET_FE_STREAM) < 0) {
 		dterrorf("DMX_SET_FE_STREAM failed: {}", strerror(errno));
 		return -1;
@@ -232,7 +232,7 @@ int dmx_set_stid_stream(int demuxfd, int stid_pid, int stid_isi) {
 	memset(&pars,0,sizeof(pars));
 	pars.embedding_pid = stid_pid;
 	pars.isi = stid_isi;
-	dtdebugf("STID: Adding pid=0x{:x}\n", stid_pid);
+	dtdebugf("STID: Adding pid=0x{:x}", stid_pid);
 	if (ioctl(demuxfd, DMX_SET_STID_STREAM, &pars) < 0) {
 		dterrorf("DMX_SET_STID_STREAM  pid={} isi={} failed: {}", stid_pid, stid_isi,
 						 strerror(errno));
@@ -246,7 +246,7 @@ int dmx_set_t2mi_stream(int demuxfd, int t2mi_pid, int t2mi_plp) {
 	memset(&pars,0,sizeof(pars));
 	pars.embedding_pid = t2mi_pid;
 	pars.plp = t2mi_plp; //not that drivers currently do not support setting this
-	dtdebugf("T2MI: Adding pid=0x{:x} plp={:d}\n", t2mi_pid, t2mi_plp);
+	dtdebugf("T2MI: Adding pid=0x{:x} plp={:d}", t2mi_pid, t2mi_plp);
 	if (ioctl(demuxfd, DMX_SET_T2MI_STREAM, &pars) < 0) {
 		dterrorf("DMX_SET_T2MI_STREAM  pid={} plp={} failed: {}", t2mi_pid, t2mi_plp,
 						 strerror(errno));
@@ -320,7 +320,6 @@ int main_dmx(int demuxfd) {
 			}
 			if(ret>0) {
 				::write(fileno(stdout), buffer, ret);
-				//dtdebugf("Wrote {} bytes\n", ret);
 			}
 		}
 	}
@@ -339,14 +338,7 @@ int main(int argc, char** argv) {
 	if(options.show_api_version)
 		return 0;
 
-	if (options.parse_options(argc, argv) < 0)
-		return -1;
-	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
-		printf("Blindscan drivers found\n");
-	} else {
-		printf("Blindscan drivers NOT found\n");
-		assert(0);
-	}
+	set_console_logging(true);
 
 	char dev[512];
 	sprintf(dev, "/dev/dvb/adapter%d/demux%d", options.adapter_no, options.demux_no);

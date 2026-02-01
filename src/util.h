@@ -19,22 +19,9 @@
  */
 
 #pragma once
+#include "dtlogger.h"
 #include <format>
 #include <sys/epoll.h>
-
-//alternative for dtdebug
-#define dterrorf(fmt, args...)																					\
-	do {																																	\
-		auto __msg = std::format(fmt, ##args);															\
-		fprintf(stderr, "Error %s", __msg.c_str());													\
-	} while(0)
-
-#define dtdebugf(fmt, args...)																					\
-	do {																																	\
-		auto __msg = std::format(fmt, ##args);															\
-		fprintf(stderr, "%s", __msg.c_str());													\
-	} while(0)
-
 
 class epoll_t {
 	int _fd{-1};

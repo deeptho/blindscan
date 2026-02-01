@@ -129,7 +129,6 @@ struct options_t {
 	int committed{-1};
 	int num_samples{1024};
 	int32_t stream_id{-1}; //
-
 	options_t() = default;
 	void parse_pls(const std::vector<std::string>& pls_entries);
 	int parse_options(int argc, char** argv);
@@ -924,7 +923,7 @@ int clear(int fefd) {
 
 
 int tune(int fefd, int frequency, bool pol_is_v) {
-	dtdebugf("Tuning to DVBS1/2 {}{}\n", frequency / 1000., pol_is_v ? 'V' : 'H');
+	dtdebugf("Tuning to DVBS1/2 {}{}", frequency / 1000., pol_is_v ? 'V' : 'H');
 	if (clear(fefd) < 0)
 		return -1;
 	if (options.rf_in >=0) {
@@ -933,7 +932,7 @@ int tune(int fefd, int frequency, bool pol_is_v) {
 		ic.config_id = 1;
 		ic.rf_in = options.rf_in;
 		ic.mode = 	FE_RESERVATION_MODE_MASTER;
-		dtdebugf("select rf_in={}\n", options.rf_in);
+		dtdebugf("select rf_in={}", options.rf_in);
 		auto ret = (fe_ioctl_result) ioctl(fefd, FE_SET_RF_INPUT, &ic);
 		switch(ret) {
 		case FE_RESERVATION_NOT_SUPPORTED:
@@ -1345,9 +1344,11 @@ int main(int argc, char** argv) {
 	set_logconfig("neumo-tune");
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
+
 	has_blindscan = show_api_version(options.show_api_version);
 	if(options.show_api_version)
 		return 0;
+	set_console_logging(true);
 	char dev[512];
 	sprintf(dev, "/dev/dvb/adapter%d/frontend%d", options.adapter_no, options.frontend_no);
 	int fefd = open_frontend(dev);
