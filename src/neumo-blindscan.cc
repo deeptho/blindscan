@@ -19,6 +19,7 @@
  */
 #include "CLI/CLI.hpp"
 #include "neumo-frontend.h"
+#include "common.h"
 #include "util.h"
 #include <algorithm>
 #include <cassert>
@@ -92,6 +93,7 @@ enum class command_t : int {
 	 resolution = 2MHz : 16s
 */
 struct options_t {
+	bool show_api_version{false};
 	command_t command{command_t::SPECTRUM};
 	blindscan_method_t blindscan_method{SCAN_FFT};
 	fe_delivery_system delivery_system{SYS_DVBS2};
@@ -315,6 +317,8 @@ int options_t::parse_options(int argc, char** argv) {
 																								 {"wideband-uk", WIDEBAND_UK_LNB},
 																								 {"C", C_LNB}};
 	std::vector<std::string> pls_entries;
+
+	app.add_flag("-v,--api-version", show_api_version, "Show api version");
 
 	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
@@ -1663,14 +1667,18 @@ int main_spectrum(int fefd) {
 
 int main(int argc, char** argv) {
 	bool has_blindscan{false};
+
+	set_logconfig("neumo-blindscan");
+
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
-	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
-		dtdebugf("Blindscan drivers found\n");
-			has_blindscan = true;
-	} else {
-		dtdebugf("!!!!Blindscan drivers not installed  - only regular tuning will work!!!!\n");
-	}
+
+	if (options.parse_options(argc, argv) < 0)
+		return -1;
+
+	has_blindscan = show_api_version(options.show_api_version);
+	if(options.show_api_version)
+		return 0;
 
 	char dev[512];
 	sprintf(dev, "/dev/dvb/adapter%d/frontend%d", options.adapter_no, options.frontend_no);

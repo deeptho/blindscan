@@ -19,6 +19,7 @@
  */
 #include "CLI/CLI.hpp"
 #include "neumo-frontend.h"
+#include "dtlogger.h"
 #include <algorithm>
 #include <cassert>
 #include <ctype.h>
@@ -49,6 +50,7 @@
 #include <unistd.h>
 #include <values.h>
 #include "util.h"
+#include "common.h"
 
 dtv_fe_constellation_sample samples[65536];
 
@@ -94,6 +96,7 @@ enum class algo_t : int {
 	 resolution = 2MHz : 16s
 */
 struct options_t {
+	bool show_api_version{false};
 	command_t command{command_t::TUNE};
 	algo_t algo{algo_t::BLIND};
 	lnb_type_t lnb_type{UNIVERSAL_LNB};
@@ -277,6 +280,8 @@ int options_t::parse_options(int argc, char** argv) {
 	std::map<std::string, int> pol_map{{"V", 2}, {"H", 1}};
 	std::map<std::string, int> pls_map{{"ROOT", 0}, {"GOLD", 1}, {"COMBO", 1}};
 	std::vector<std::string> pls_entries;
+
+	app.add_flag("-v,--api-version", show_api_version, "Show api version");
 
 	app.add_option("-c,--command", command, "Command to execute", true)
 		->transform(CLI::CheckedTransformer(command_map, CLI::ignore_case));
@@ -1335,17 +1340,14 @@ int main_constellation(int fefd) {
 }
 
 int main(int argc, char** argv) {
+
 	bool has_blindscan{false};
+	set_logconfig("neumo-tune");
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
-	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
-		printf("Blindscan drivers found\n");
-			has_blindscan = true;
-	} else {
-		printf("!!!!Blindscan drivers not installed  - only regular tuning will work!!!!\n");
-		options.algo = algo_t::WARM;
-	}
-
+	has_blindscan = show_api_version(options.show_api_version);
+	if(options.show_api_version)
+		return 0;
 	char dev[512];
 	sprintf(dev, "/dev/dvb/adapter%d/frontend%d", options.adapter_no, options.frontend_no);
 	int fefd = open_frontend(dev);

@@ -19,6 +19,7 @@
  */
 #include "CLI/CLI.hpp"
 #include "neumo-frontend.h"
+#include "common.h"
 #include "neumo-dmx.h"
 #include "util.h"
 #include <algorithm>
@@ -53,6 +54,7 @@
 #include <values.h>
 
 struct options_t {
+	bool show_api_version{false};
 	std::vector<int> pids = {};
 	std::string filename_pattern{"/tmp/%s_a%d_%.3f%c.dat"};
 	int adapter_no{0};
@@ -73,7 +75,7 @@ int options_t::parse_options(int argc, char** argv) {
 	CLI::App app{
 		"Stream dvb data from a demux to standard output"
 		, "DVB demux program"};
-
+	app.add_flag("-v,--api-version", show_api_version, "Show api version");
 	app.add_option("-a,--adapter", adapter_no, "Adapter number", true);
 	app.add_option("-d,--demux", demux_no, "Demux number", true);
 	app.add_flag("--fe-stream", fe_stream, "directly address the frontend");
@@ -327,6 +329,16 @@ int main_dmx(int demuxfd) {
 
 int main(int argc, char** argv) {
 	bool has_blindscan{false};
+
+	set_logconfig("neumo-dmx");
+
+	if (options.parse_options(argc, argv) < 0)
+		return -1;
+
+	has_blindscan = show_api_version(options.show_api_version);
+	if(options.show_api_version)
+		return 0;
+
 	if (options.parse_options(argc, argv) < 0)
 		return -1;
 	if(std::filesystem::exists("/sys/module/dvb_core/info/version")) {
