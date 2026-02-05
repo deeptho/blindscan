@@ -23,7 +23,8 @@ add_compile_options (-fPIC -fsized-deallocation -DHAS_UNCAUGHT_EXCEPTIONS=1 -D D
 set(CMAKE_BUILD_TYPE Debug)
 
 # Set the install prefix
-#set(CMAKE_INSTALL_PREFIX "/usr")
+set(CMAKE_INSTALL_PREFIX "/usr")
+set(CMAKE_INSTALL_LIBDIR "/lib64")
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "../x86_64/")
 endif()
@@ -32,3 +33,4 @@ string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
 
 add_subdirectory(src)
+add_subdirectory(config)

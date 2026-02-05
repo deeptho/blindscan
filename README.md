@@ -14,9 +14,22 @@ on tbs based DVB cards. Currently supports:
 The code requires a patched kernel tree which is available
 at https://github.com/deeptho/linux_media
 Always use the latest versions from both repositories, or make sure that the versions match
-(e.g. the same tag or the same branch). Installation instructions for installing the drivers in Ubuntu can be found in [INSTALL.md](INSTALL.md)
+(e.g. the same tag or the same branch). Compilation instructions for  Ubuntu and Fedora can be found
+in [INSTALL.md](INSTALL.md)
 
-#Important
+##  Installation
+
+I advise against installing this software. Instead just run it from where it has been compiled, e.g.
+`` ~/blindscan/build/src/neumo-tune``
+
+The reason for this advice is that sometimes users  have an old version installed and then run a new
+version from within the compile tree, leading to endless confusion when reporting bugs.
+
+If you wish to ignore this advice, then remove all installed versions and start with a clean
+build, before reporting bugs.
+
+
+##Important
 
 This code requires specific versions of neumo drivers to be loaded
 * Versions up to and including release-1.3 use older neumo drivers, which can be found in

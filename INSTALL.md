@@ -1,12 +1,12 @@
 The following info is incomplete
 
-# Installing on Fedora
+# Compiling on Fedora
 Install prerequisites:
-```sudo dnf install libconfig-devel```
+```sudo dnf install libconfig-devel mold```
 
 
 
-# Installing on Ubuntu
+# Compiling on Ubuntu
 Info contributed by user Llew on satellites.co.uk
 
 
@@ -21,7 +21,7 @@ After that completes, type :
 Wait to finish, now to add some utilities (you'll need root privileges,
 so still in terminal, type sudo -s then your password). Then -
 
-```sudo apt-get install patchutils libproc-processtable-perl```
+```sudo apt-get install patchutils libproc-processtable-perl mold```
 
 Then (maybe not necessary, but no big dea to add it):
 

@@ -36,4 +36,4 @@ target_link_libraries(stid135-blindscan PRIVATE   ${Boost_PROGRAM_OPTIONS_LIBRAR
 target_link_libraries(neumo-tune PRIVATE   ${Boost_PROGRAM_OPTIONS_LIBRARY} stdc++fs config++ neumoutil)
 target_link_libraries(neumo-dmx PRIVATE   ${Boost_PROGRAM_OPTIONS_LIBRARY} stdc++fs config++ neumoutil)
 
-install (TARGETS neumo-blindscan neumo-tune)
+install (TARGETS stid135-blindscan neumo-dmx neumo-blindscan neumo-tune)
