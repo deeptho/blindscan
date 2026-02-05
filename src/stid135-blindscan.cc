@@ -55,7 +55,7 @@
 #include <values.h>
 
 int tune_it(int fefd, int frequency_, int symbolrate, int band, bool pol_is_v);
-int do_lnb_and_diseqc(int fefd, int frequency, int band, bool pol_is_v);
+
 int tune(int fefd, int frequency, int band, bool pol_is_v);
 
 static constexpr int make_code(int pls_mode, int pls_code, int timeout = 0) {
@@ -181,9 +181,9 @@ class scanner_t {
 	int next_to_scan{0};
 	FILE* fpout_bs{0};
 	std::vector<uint16_t> matype_list; //size needs to be 256 in current implementation
-	frontend_t* spectrum_fft_fe {nullptr};
-	frontend_t* spectrum_sweep_fe {nullptr};
-	std::vector<frontend_t> frontends;
+	std::shared_ptr<frontend_t> spectrum_fft_fe {nullptr};
+	std::shared_ptr<frontend_t> spectrum_sweep_fe {nullptr};
+	std::vector<std::shared_ptr<frontend_t>> frontends;
 	std::vector<std::thread> threads;
 	int num_peaks{0};
 	int num_locked{0};
@@ -230,7 +230,7 @@ struct frontend_t {
 	int scan_peak(struct spectral_peak_t& peak);
 
 	int select_band(int band, bool pol_is_v);
-	int set_rf_input();
+	int set_rf_input(bool as_master);
 	int get_extended_frontend_info();
 	std::tuple<std::vector<spectral_peak_t>, std::vector<uint32_t>, std::vector<int32_t>>
 	spectrum_band(int start_frequency, int end_frequency);
@@ -247,9 +247,62 @@ struct frontend_t {
 	int close();
 	int xprintf(const char*fmt, ...);
 	int save_info(int adapter_no, int band, bool pol_is_v);
+	int do_lnb_and_diseqc(int frequency, int band, bool pol_is_v);
+
 };
 
 scanner_t scanner;
+
+int frontend_t::set_rf_input(bool as_master) {
+	int ret;
+
+	int count;
+	bool error{false};
+	if (options.rf_in >=0) {
+		struct fe_rf_input_control ic{};
+		ic.owner = getpid();
+		ic.config_id = 1 ;
+		ic.rf_in = options.rf_in;
+		ic.mode = as_master ?  FE_RESERVATION_MODE_MASTER : FE_RESERVATION_MODE_SLAVE;
+		assert(!ic.unicable_mode);
+		printf("select rf_in=%d mode=%d\n", options.rf_in, ic.mode);
+		bool error=false;
+		bool done{false};
+		for(int count=0; !done && count<10; ++count) {
+			ret = ioctl(fefd, FE_SET_RF_INPUT, &ic);
+			switch(ret) {
+			case FE_RESERVATION_MASTER:
+				assert(as_master);
+				done=true;
+				break;
+			case FE_RESERVATION_SLAVE:
+				assert(!as_master);
+				done=true;
+				break;
+			case FE_RESERVATION_RETRY:
+			FE_UNICABLE_DISEQC_RETRY:
+				sleep(1);
+				continue;
+			case FE_RESERVATION_UNCHANGED:
+				done=true;
+				break;
+			case FE_RESERVATION_RELEASED:
+			FE_RESERVATION_NOT_SUPPORTED:
+			FE_RESERVATION_FAILED:
+			FE_RESERVATION_EINVAL:
+				error=true;
+				done=true;
+				break;
+			}
+		}
+		if (error || !done) {
+			scanner.xprintf("problem setting rf_input=%d as_master=%d ret=%d\n", options.rf_in, as_master, ret);
+			exit(1);
+		}
+	}
+
+	return 0;
+}
 
 int frontend_t::xprintf(const char* fmt, ...) {
 	va_list args;
@@ -286,17 +339,17 @@ void scanner_t::open_frontends() {
 	printf("=======================================\n");
 	printf("Blindscan using the following adapters:\n");
 	for(auto adapter_no: options.adapter_no) {
-		auto fe = frontend_t();
-		if(fe.init(adapter_no, options.frontend_no)==0) {
-			if(fe.can_use_rf_in(options.rf_in)) {
+		auto fe = std::make_shared<frontend_t>();
+		if(fe->init(adapter_no, options.frontend_no)==0) {
+			if(fe->can_use_rf_in(options.rf_in)) {
 					frontends.push_back(fe);
-					printf("\t%s RF_IN=%d FFT=%s SWEEP=%s\n", fe.adapter_name.c_str(), options.rf_in,
-								 fe.supports_spectrum_fft ? "Yes" : "No",
-								 fe.supports_spectrum_sweep ? "Yes" : "No");
-					if (fe.supports_spectrum_fft && !spectrum_fft_fe)
-						spectrum_fft_fe = &fe;
-					if (fe.supports_spectrum_sweep && ! spectrum_sweep_fe)
-						spectrum_sweep_fe = &fe;
+					printf("\t%s RF_IN=%d FFT=%s SWEEP=%s\n", fe->adapter_name.c_str(), options.rf_in,
+								 fe->supports_spectrum_fft ? "Yes" : "No",
+								 fe->supports_spectrum_sweep ? "Yes" : "No");
+					if (fe->supports_spectrum_fft && !spectrum_fft_fe)
+						spectrum_fft_fe = fe;
+					if (fe->supports_spectrum_sweep && ! spectrum_sweep_fe)
+						spectrum_sweep_fe = fe;
 			} else {
 				printf("\tError: One or more frontends cannot use rf_in=%d\n", options.rf_in);
 				exit(1);
@@ -314,7 +367,7 @@ void scanner_t::open_frontends() {
 
 void scanner_t::close_frontends() {
 	for(auto& fe: frontends) {
-		fe.close();
+		fe->close();
 	}
 	frontends.clear();
 }
@@ -325,13 +378,8 @@ std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band
 	if(frontends.size() < 1)
 		return {-1, -1};
 	next_to_scan = 0;
-	auto* spectrum_fe = spectrum_fft_fe ? spectrum_fft_fe : spectrum_sweep_fe;
+	auto spectrum_fe = spectrum_fft_fe ? spectrum_fft_fe : spectrum_sweep_fe;
 	spectrum_fe->select_band(band, pol_is_v);
-	for (int i=0; i <frontends.size(); ++i) {
-			auto& fe = frontends[i];
-			if(&fe != spectrum_fe)
-				fe.set_rf_input();
-	}
 	std::tie(spectral_peaks, freq, rf_level) =
 		spectrum_fe->spectrum_band(start_freq, end_freq);
 	printf("Found %ld peaks\n", spectral_peaks.size());
@@ -339,11 +387,16 @@ std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band
 		save_spectrum(0, pol_is_v, append);
 		save_peaks(0, pol_is_v, append);
 	}
+	for (int i=0; i <frontends.size(); ++i) {
+			auto& fe = frontends[i];
+			if(fe != spectrum_fe)
+				fe->set_rf_input(false /*as_master*/);
+	}
 	if(!fpout_bs)
 		open_output();
 
 	for(auto& fe: frontends) {
-		threads.emplace_back(std::thread(&frontend_t::task, std::ref(fe), band, pol_is_v));
+		threads.emplace_back(std::thread(&frontend_t::task, std::ref(*fe), band, pol_is_v));
 	}
 
 	for(auto& t: threads) {
@@ -352,8 +405,8 @@ std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band
 	int num_locked{0};
 	int num_peaks{0};
 	for(auto& fe: frontends) {
-		num_locked += fe.num_locked;
-		num_peaks += fe.num_peaks;
+		num_locked += fe->num_locked;
+		num_peaks += fe->num_peaks;
 	}
 	printf("Locked=%d of %d peaks\n", num_locked, num_peaks);
 	threads.clear();
@@ -720,6 +773,13 @@ struct cmdseq_t {
 		cmdseq.num++;
 	};
 
+	inline void add (int cmd) {
+		assert(cmdseq.num < props.size()-1);
+		memset(&cmdseq.props[cmdseq.num], 0, sizeof(cmdseq.props[cmdseq.num]));
+		cmdseq.props[cmdseq.num].cmd = cmd;
+		cmdseq.num++;
+	};
+
 	void add(int cmd, const dtv_fe_constellation& constellation) {
 		assert(cmdseq.num < props.size() - 1);
 		memset(&cmdseq.props[cmdseq.num], 0, sizeof(cmdseq.props[cmdseq.num]));
@@ -825,6 +885,7 @@ int driver_start_spectrum(int fefd, int start_freq_, int end_freq_, int band, bo
 	auto end_freq = driver_freq_for_freq(end_freq_ -1, band) +1;
 	if(start_freq > end_freq)
 		std::swap(start_freq, end_freq);
+	cmdseq.add(DTV_SET_SEC_CONFIGURED);
 	cmdseq.add(DTV_DELIVERY_SYSTEM,  (int) options.delivery_system);
 	if(options.is_sat()) {
 		cmdseq.add(DTV_SCAN_START_FREQUENCY,  start_freq );
@@ -947,7 +1008,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 			return 0;
 		tone_off_called = true;
 		if ((err = ioctl(fefd, FE_SET_TONE, SEC_TONE_OFF))) {
-			printf("problem Setting the Tone OFF");
+			printf("problem setting the Tone OFF");
 			exit(1);
 		}
 		return 1;
@@ -1023,7 +1084,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 	return tone_off_called ? 1 : 0;
 }
 
-int do_lnb_and_diseqc(int fefd, int band, bool pol_is_v) {
+int frontend_t::do_lnb_and_diseqc(int frequency, int band, bool pol_is_v) {
 
 	/*TODO: compute a new diseqc_command string based on
 		last tuned lnb, such that needless switching is avoided
@@ -1041,22 +1102,14 @@ int do_lnb_and_diseqc(int fefd, int band, bool pol_is_v) {
 		13V = vertical or right-hand  18V = horizontal or low-hand
 		TODO: change this to 18 Volt when using positioner
 	*/
-	if (options.rf_in >=0) {
-		struct fe_rf_input_control ic;
-		ic.owner = getpid();
-		ic.config_id = 1 ;
-		ic.rf_in = options.rf_in;
-		ic.mode = FE_RESERVATION_MODE_MASTER;
-		//printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, &ic))) {
-			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
-			exit(1);
-		}
-	}
+
+	int count=0;
+	if (options.rf_in >=0)
+		this->set_rf_input(true /*as_master*/);
 
 	fe_sec_voltage_t lnb_voltage = pol_is_v ? SEC_VOLTAGE_13 : SEC_VOLTAGE_18;
 	if ((ret = ioctl(fefd, FE_SET_VOLTAGE, lnb_voltage))) {
-		scanner.xprintf("problem Setting voltage\n");
+		scanner.xprintf("problem setting voltage\n");
 		exit(1);
 	}
 
@@ -1164,26 +1217,6 @@ int  frontend_t::select_band(int band, bool pol_is_v) {
 	this->band = band;
 	this->pol_is_v = pol_is_v;
 	return do_lnb_and_diseqc(fefd, band, pol_is_v);
-}
-
-int frontend_t::set_rf_input() {
-	int ret;
-
-	if (options.rf_in >=0) {
-		struct fe_rf_input_control ic;
-		ic.owner = getpid();
-		ic.config_id = 1 ;
-		ic.rf_in = options.rf_in;
-		ic.mode = FE_RESERVATION_MODE_MASTER;
-
-		//printf("select rf_in=%d\n", options.rf_in);
-		if ((ret = ioctl(fefd, FE_SET_RF_INPUT, &ic))) {
-			scanner.xprintf("problem Setting rf_input ret=%d\n", ret);
-			exit(1);
-		}
-	}
-
-	return 0;
 }
 
 
