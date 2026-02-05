@@ -265,7 +265,7 @@ int frontend_t::set_rf_input(bool as_master) {
 		ic.rf_in = options.rf_in;
 		ic.mode = as_master ?  FE_RESERVATION_MODE_MASTER : FE_RESERVATION_MODE_SLAVE;
 		assert(!ic.unicable_mode);
-		printf("select rf_in=%d mode=%d\n", options.rf_in, ic.mode);
+		scanner.xprintf("select rf_in=%d mode=%d\n", options.rf_in, ic.mode);
 		bool error=false;
 		bool done{false};
 		for(int count=0; !done && count<10; ++count) {
@@ -336,14 +336,14 @@ spectral_peak_t* scanner_t::reserve_peak_to_scan()
 }
 
 void scanner_t::open_frontends() {
-	printf("=======================================\n");
-	printf("Blindscan using the following adapters:\n");
+	scanner.xprintf("=======================================\n");
+	scanner.xprintf("Blindscan using the following adapters:\n");
 	for(auto adapter_no: options.adapter_no) {
 		auto fe = std::make_shared<frontend_t>();
 		if(fe->init(adapter_no, options.frontend_no)==0) {
 			if(fe->can_use_rf_in(options.rf_in)) {
 					frontends.push_back(fe);
-					printf("\t%s RF_IN=%d FFT=%s SWEEP=%s\n", fe->adapter_name.c_str(), options.rf_in,
+					scanner.xprintf("\t%s RF_IN=%d FFT=%s SWEEP=%s\n", fe->adapter_name.c_str(), options.rf_in,
 								 fe->supports_spectrum_fft ? "Yes" : "No",
 								 fe->supports_spectrum_sweep ? "Yes" : "No");
 					if (fe->supports_spectrum_fft && !spectrum_fft_fe)
@@ -351,16 +351,16 @@ void scanner_t::open_frontends() {
 					if (fe->supports_spectrum_sweep && ! spectrum_sweep_fe)
 						spectrum_sweep_fe = fe;
 			} else {
-				printf("\tError: One or more frontends cannot use rf_in=%d\n", options.rf_in);
+				scanner.xprintf("\tError: One or more frontends cannot use rf_in=%d\n", options.rf_in);
 				exit(1);
 			}
 		} else {
-			printf("\tError: Failed to init frontend: adapter_no=%d frontend_no=%d\n", adapter_no, options.frontend_no);
+			scanner.xprintf("\tError: Failed to init frontend: adapter_no=%d frontend_no=%d\n", adapter_no, options.frontend_no);
 			exit(1);
 		}
 	}
 	if(!spectrum_sweep_fe  && ! spectrum_fft_fe) {
-		printf("\tError: None of the specified adapters support spectrum acquisition\n");
+		scanner.xprintf("\tError: None of the specified adapters support spectrum acquisition\n");
 		exit(1);
 	}
 }
@@ -382,7 +382,7 @@ std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band
 	spectrum_fe->select_band(band, pol_is_v);
 	std::tie(spectral_peaks, freq, rf_level) =
 		spectrum_fe->spectrum_band(start_freq, end_freq);
-	printf("Found %ld peaks\n", spectral_peaks.size());
+	scanner.xprintf("Found %ld peaks\n", spectral_peaks.size());
 	if(options.save_spectrum) {
 		save_spectrum(0, pol_is_v, append);
 		save_peaks(0, pol_is_v, append);
@@ -408,7 +408,7 @@ std::tuple<int, int> scanner_t::scan_band(int start_freq, int end_freq, int band
 		num_locked += fe->num_locked;
 		num_peaks += fe->num_peaks;
 	}
-	printf("Locked=%d of %d peaks\n", num_locked, num_peaks);
+	scanner.xprintf("Locked=%d of %d peaks\n", num_locked, num_peaks);
 	threads.clear();
 	return {num_locked, num_peaks};
 }
@@ -428,10 +428,10 @@ int frontend_t::task(int band, bool pol_is_v)
 }
 
 static void print_vec(const char*name, std::vector<int>& v) {
-	printf("%s=", name);
+	scanner.xprintf("%s=", name);
 	for(auto x: v)
-		printf("%d ", x);
-	printf("\n");
+		scanner.xprintf("%d ", x);
+	scanner.xprintf("\n");
 }
 
 int band_for_freq(int32_t frequency)		{
@@ -527,7 +527,7 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 				else if (!mode_.compare("COMBO"))
 					mode = 2;
 				else {
-					printf("mode=/%s/\n", mode_.c_str());
+					scanner.xprintf("mode=/%s/\n", mode_.c_str());
 					throw std::runtime_error("Invalid PLS mode");
 				}
 			}
@@ -543,9 +543,9 @@ void options_t::parse_pls(const std::vector<std::string>& pls_entries) {
 			}
 			pls_codes.push_back(make_code(mode, code));
 		}
-		printf(" %d:%d", mode, code);
+		scanner.xprintf(" %d:%d", mode, code);
 	}
-	printf("\n");
+	scanner.xprintf("\n");
 }
 
 std::map<std::string, fe_delivery_system> delsys_map{
@@ -637,20 +637,20 @@ int options_t::parse_options(int argc, char** argv) {
 	parse_pls(pls_entries);
 
 	print_vec("adapter_no", adapter_no);
-	printf("rf_in=%d\n", rf_in);
-	printf("frontend=%d\n", frontend_no);
+	scanner.xprintf("rf_in=%d\n", rf_in);
+	scanner.xprintf("frontend=%d\n", frontend_no);
 
-	printf("start-freq=%d\n", start_freq);
-	printf("end-freq=%d\n", end_freq);
-	printf("step-freq=%d\n", step_freq);
+	scanner.xprintf("start-freq=%d\n", start_freq);
+	scanner.xprintf("end-freq=%d\n", end_freq);
+	scanner.xprintf("step-freq=%d\n", step_freq);
 
-	printf("pol=%d\n", pol);
-	printf("pls_codes[%ld]={ ", pls_codes.size());
+	scanner.xprintf("pol=%d\n", pol);
+	scanner.xprintf("pls_codes[%ld]={ ", pls_codes.size());
 	for (auto c : pls_codes)
-		printf("%d, ", c);
-	printf("}\n");
+		scanner.xprintf("%d, ", c);
+	scanner.xprintf("}\n");
 
-	printf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
+	scanner.xprintf("diseqc=%s: U=%d C=%d\n", diseqc.c_str(), uncommitted, committed);
 
 	if(options.is_sat()) {
 		switch(options.lnb_type) {
@@ -745,7 +745,7 @@ int open_frontend(const char* frontend_fname) {
 	int rw_flag = rw ? O_RDWR : O_RDONLY;
 	int fefd = open(frontend_fname, rw_flag | O_NONBLOCK);
 	if (fefd < 0) {
-		printf("open_frontend failed: %s\n", strerror(errno));
+		scanner.xprintf("open_frontend failed: %s\n", strerror(errno));
 		return -1;
 	}
 	return fefd;
@@ -755,7 +755,7 @@ void close_frontend(int fefd) {
 	if (fefd < 0)
 		return;
 	if (::close(fefd) < 0) {
-		printf("close_frontend failed: %s: ", strerror(errno));
+		scanner.xprintf("close_frontend failed: %s: ", strerror(errno));
 		return;
 	}
 }
@@ -804,7 +804,7 @@ struct cmdseq_t {
 		auto* tvp = &cmdseq.props[cmdseq.num];
 		memset(tvp, 0, sizeof(cmdseq.props[cmdseq.num]));
 		tvp->cmd = cmd;
-		printf("adding scramble code range:%d-%d\n", pls_start, pls_end);
+		scanner.xprintf("adding scramble code range:%d-%d\n", pls_start, pls_end);
 		memcpy(&tvp->u.buffer.data[0 * sizeof(uint32_t)], &pls_start, sizeof(pls_start));
 		memcpy(&tvp->u.buffer.data[1 * sizeof(uint32_t)], &pls_end, sizeof(pls_end));
 		tvp->u.buffer.len = 2 * sizeof(uint32_t);
@@ -823,7 +823,7 @@ struct cmdseq_t {
 	int scan(int fefd, bool init) {
 		add(DTV_SCAN, init);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
-			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
+			scanner.xprintf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
 			exit(1);
 		}
 		return 0;
@@ -831,7 +831,7 @@ struct cmdseq_t {
 	int spectrum(int fefd, dtv_fe_spectrum_method method) {
 		add(DTV_SPECTRUM, method);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
-			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
+			scanner.xprintf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
 			exit(1);
 		}
 		return 0;
@@ -843,7 +843,7 @@ struct cmdseq_t {
 		};
 		add(DTV_CONSTELLATION, cs);
 		if ((ioctl(fefd, FE_SET_PROPERTY, &cmdseq)) == -1) {
-			printf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
+			scanner.xprintf("FE_SET_PROPERTY failed: %s\n", strerror(errno));
 			exit(1);
 		}
 		return 0;
@@ -860,7 +860,7 @@ int clear(int fefd) {
 	};
 	struct dtv_properties cmdclear = {.num = 1, .props = pclear};
 	if ((ioctl(fefd, FE_SET_PROPERTY, &cmdclear)) == -1) {
-		printf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
+		scanner.xprintf("FE_SET_PROPERTY clear failed: %s\n", strerror(errno));
 		// set_interrupted(ERROR_TUNE<<8);
 		exit(1);
 	}
@@ -968,7 +968,7 @@ int send_diseqc_message(int fefd, char switch_type, unsigned char port, unsigned
 
 	int err;
 	if ((err = ioctl(fefd, FE_DISEQC_SEND_MASTER_CMD, &cmd))) {
-		printf("problem sending the DiseqC message\n");
+		scanner.xprintf("problem sending the DiseqC message\n");
 		exit(1);
 	}
 	return 0;
@@ -1008,7 +1008,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 			return 0;
 		tone_off_called = true;
 		if ((err = ioctl(fefd, FE_SET_TONE, SEC_TONE_OFF))) {
-			printf("problem setting the Tone OFF");
+			scanner.xprintf("problem setting the Tone OFF");
 			exit(1);
 		}
 		return 1;
@@ -1049,7 +1049,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				int extra = (pol_is_v ? 0 : 2) | (band_is_high ? 1 : 0);
 				ret = send_diseqc_message(fefd, 'C', options.committed * 4, extra, repeated);
 				if (ret < 0) {
-					printf("Sending Committed DiseqC message failed");
+					scanner.xprintf("Sending Committed DiseqC message failed");
 				}
 				must_pause = !repeated;
 			} break;
@@ -1065,7 +1065,7 @@ int diseqc(int fefd, bool pol_is_v, bool band_is_high) {
 				msleep(must_pause ? 200 : 30);
 				ret = send_diseqc_message(fefd, 'U', options.uncommitted, 0, repeated);
 				if (ret < 0) {
-					printf("Sending Uncommitted DiseqC message failed");
+					scanner.xprintf("Sending Uncommitted DiseqC message failed");
 				}
 				must_pause = !repeated;
 			} break;
@@ -1158,7 +1158,7 @@ int frontend_t::get_extended_frontend_info() {
 	};
 
 	if ((ioctl(fefd, FE_GET_PROPERTY, &props)) == -1) {
-		printf("FE_GET_PROPERTY failed: %s", strerror(errno));
+		scanner.xprintf("FE_GET_PROPERTY failed: %s", strerror(errno));
 		//set_interrupted(ERROR_TUNE<<8);
 		close_frontend(fefd);
 		return -1;
@@ -1171,13 +1171,13 @@ int frontend_t::get_extended_frontend_info() {
 		rf_inputs.push_back(fe_info.rf_inputs[i]);
 #if 0
 	auto tst =dump_caps((chdb::fe_caps_t)fe_info.caps);
-	printf("CAPS: %s", tst);
+	scanner.xprintf("CAPS: %s", tst);
 	fe.delsys.resize(num_delsys);
 	for(int i=0 ; i<num_delsys; ++i) {
 		auto delsys = (chdb::fe_delsys_t) supported_delsys[i];
 		//auto fe_type = chdb::delsys_to_type (delsys);
 		auto* s = enum_to_str(delsys);
-		printf("delsys[" << i << "]=" << s);
+		scanner.xprintf("delsys[" << i << "]=" << s);
 		changed |= (i >= fe.delsys.size() || fe.delsys[i].fe_type!= delsys);
 		fe.delsys[i].fe_type = delsys;
 	}
@@ -1191,7 +1191,7 @@ int frontend_t::create_poll() {
 	ep.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET; // edge triggered!
 	int s = epoll_ctl(efd, EPOLL_CTL_ADD, fefd, &ep);
 	if (s < 0) {
-		printf("EPOLL Failed: err=%s\n", strerror(errno));
+		scanner.xprintf("EPOLL Failed: err=%s\n", strerror(errno));
 		exit(1);
 	}
 	assert(s == 0);
@@ -1204,11 +1204,11 @@ int frontend_t::open(int adapter_no, int frontend_no) {
 	sprintf(dev, "/dev/dvb/adapter%d/frontend%d", adapter_no, frontend_no);
 	fefd = open_frontend(dev);
 	if (fefd < 0) {
-			printf("Could not open %s\n", dev);
+			scanner.xprintf("Could not open %s\n", dev);
 			return -1;
 	}
 	if(get_extended_frontend_info()<0) {
-		printf("Adap%d: Blindscan not supported\n", adapter_no);
+		scanner.xprintf("Adap%d: Blindscan not supported\n", adapter_no);
 	}
 	return 0;
 }
@@ -1265,14 +1265,14 @@ frontend_t::get_spectrum() {
 	spectrum.num_candidates = spectrum.num_freq;
 	cmdseq.props[0].u.spectrum = spectrum;
 	if (ioctl(fefd, FE_GET_PROPERTY, &cmdseq) < 0) {
-		printf("ioctl failed: %s\n", strerror(errno));
+		scanner.xprintf("ioctl failed: %s\n", strerror(errno));
 		assert(0); // todo: handle EINTR
 		return {};
 	}
 	spectrum = cmdseq.props[0].u.spectrum;
 
 	if (spectrum.num_freq <= 0) {
-		printf("kernel returned spectrum with 0 samples\n");
+		scanner.xprintf("kernel returned spectrum with 0 samples\n");
 		freq.clear();
 		rf_level.clear();
 	} else {
@@ -1281,7 +1281,7 @@ frontend_t::get_spectrum() {
 	}
 
 	if (spectrum.num_candidates <= 0) {
-		printf("kernel returned spectrum with 0 candidates\n");
+		scanner.xprintf("kernel returned spectrum with 0 candidates\n");
 		candidates.clear();
 	} else {
 		candidates.resize(spectrum.num_candidates);
@@ -1301,14 +1301,14 @@ frontend_t::get_spectrum() {
 std::tuple<std::vector<spectral_peak_t>, std::vector<uint32_t>, std::vector<int32_t>>
 frontend_t::spectrum_band(int start_frequency, int end_frequency) {
 	int ret = 0;
-	printf("==========================\n");
-	printf("Acquiring spectrum on adapter %d\n", adapter_no);
-	printf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency / 1000., end_frequency / 1000., pol_is_v ? 'V' : 'H');
+	scanner.xprintf("==========================\n");
+	scanner.xprintf("Acquiring spectrum on adapter %d\n", adapter_no);
+	scanner.xprintf("SPECTRUM: %.3f-%.3f pol=%c\n", start_frequency / 1000., end_frequency / 1000., pol_is_v ? 'V' : 'H');
 	flush_events();
 	bool init = true;
 	ret = driver_start_spectrum(fefd, start_frequency, end_frequency, band, pol_is_v, options.spectrum_method);
 	if (ret != 0) {
-		printf("Start spectrum scan FAILED\n");
+		scanner.xprintf("Start spectrum scan FAILED\n");
 		exit(1);
 	}
 	struct dvb_frontend_event event {};
