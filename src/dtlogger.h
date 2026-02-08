@@ -20,6 +20,7 @@
 
 #pragma once
 #include <assert.h>
+#include <string.h>
 #include <string>
 #include <format>
 #include <sys/timeb.h>
