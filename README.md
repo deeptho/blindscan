@@ -50,6 +50,8 @@ Specifically some features require that the kernel modules support at least neum
 
 ## [DAB streams using neumo-blindscan and eti-tools](doc/dab.md) ##
 
+## [DVB-NIP streams using neumo-dmx](doc/dvb-nip.md) ##
+
 
 ## Compiling
 The code is compiled with clang++. Make sure it is installed as some versions of g++ have some
