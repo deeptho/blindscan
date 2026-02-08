@@ -1,6 +1,6 @@
 # Neumo-blindscan
 
-##  DVB-NIP IBC data carroussel 12227V @130E ##
+##  DVB-NIP IBC data carroussel 12227V @13.0E ##
 
 This files in this carroussel can be received using neumo-dmx and a **recent** version of tsuck
 
