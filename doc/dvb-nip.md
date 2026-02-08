@@ -70,4 +70,4 @@ This files in this carroussel can be received using neumo-dmx and a **recent** v
 
   Many files will be created. For example, some of the files are transport streams and can be played with mpv
 
-  ![dvb-nip ibc screenshot](doc/images/tamazight.jpg)
+  ![dvb-nip ibc screenshot](images/tamazight.jpg)
