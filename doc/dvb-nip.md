@@ -5,7 +5,7 @@
 This files in this carroussel can be received using neumo-dmx and a **recent** version of tsuck
 
 * First tune to the relevant mux, e.g., using the positoner dialog of neumoDVB: 12226V, symbol rate 27500.
-  You can also use `neumo-tune`. For example, the folloing requests to use the LNB connected to the 3rd input (`rf_in==2`)
+  You can also use `neumo-tune`. For example, the following requests to use the LNB connected to the 3rd input (`rf_in==2`)
   on a DVB-card and the adapter (`-a 8`) that is connected to it. The last line shows that the tuner is locked
   ```
     neumo-tune -a 8 --rf-in=2 -U 8 --frequency=12227000 --symbol-rate=27500 --pol=V
@@ -31,7 +31,7 @@ This files in this carroussel can be received using neumo-dmx and a **recent** v
     ```
 
 * Leave the tuning command running, but in another terminal, select the proper PID in the stream and pass
-  it to tsdduck to list its content. Bellow we will save the service with service id 1772. This service id can be found
+  it to tsduck to list its content. Below we will save the service with service id 1772. This service id can be found
   in the service list in neumoDVB, as the `service_id`  for the service named DVB-NIP IBC. We use the same adapter (`-a 8`)
   that we tuned.  The stream produced by neumo-dmx is passed to `tsresync` which will find the start of the stream, and then
   to the `nip` plugin which will output a summary of the stream; the stream itself is dropped (not used any further).
