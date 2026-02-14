@@ -7,6 +7,7 @@
     <priority value ="debug" />
     <layout class="org.apache.log4j.PatternLayout">
       <param name="ConversionPattern" value="%d %p: [%X{thread_name} %x] %m %.20F:%L%n"/>
+      <param name="Target" value="System.err"/>
     </layout>
   </appender>
 

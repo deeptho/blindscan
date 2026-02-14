@@ -338,7 +338,8 @@ int main(int argc, char** argv) {
 	if(options.show_api_version)
 		return 0;
 
-	set_console_logging(true);
+	//console logging must be off, or messages will be mixed with data
+	set_console_logging(false);
 
 	char dev[512];
 	sprintf(dev, "/dev/dvb/adapter%d/demux%d", options.adapter_no, options.demux_no);

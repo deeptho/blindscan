@@ -89,7 +89,6 @@ static const LogString CONSOLE_APPENDER_NAME = LOG4CXX_STR("DynamicConsole");
 void set_console_logging(bool enable) {
 	LoggerPtr rootLogger = Logger::getRootLogger();
 	AppenderPtr consoleAppender = rootLogger->getAppender(CONSOLE_APPENDER_NAME);
-
 	if (enable) {
 		if (!consoleAppender) {
 			// Create ConsoleAppender
