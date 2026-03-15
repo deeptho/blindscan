@@ -71,3 +71,11 @@ This files in this carroussel can be received using neumo-dmx and a **recent** v
   Many files will be created. For example, some of the files are transport streams and can be played with mpv
 
   ![dvb-nip ibc screenshot](images/tamazight.jpg)
+
+
+##  DVB-NIP IBC data carroussel 12379.5V @13.0E ##
+
+This works with the folllowig demux command:
+```
+    neumo-dmx -a 8 | tsresync | tsp -P nip -p 300 --log-fdt --save-dvb-gw /tmp/xxx -O drop
+```
