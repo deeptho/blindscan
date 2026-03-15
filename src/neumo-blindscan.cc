@@ -116,7 +116,13 @@ struct options_t {
 	std::string pls;
 	std::vector<uint32_t> pls_codes = {
 		// In use on 5.0W
-		make_code(0, 16416), make_code(0, 8), make_code(1, 121212), make_code(1, 262140), make_code(1, 50416)};
+		make_code(0, 16416),
+		make_code(0, 8),
+		make_code(1, 121212),
+		make_code(1, 262140),
+		make_code(1, 50416),
+		make_code(0, 211867)
+	};
 	int start_pls_code{-1};
 	int end_pls_code{-1};
 	int adapter_no{0};
