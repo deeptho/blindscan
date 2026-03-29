@@ -51,7 +51,7 @@ You can also use other values of  `-dst-ip`, i.e., 239.199.2.X, where X is in th
 
 * Tune:
 
-   ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U14  -f 12241336 -pH  -S 13382``
+   ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U12  -f 12241336 -pH  -S 13382``
 
 * demux:
   ``neumo-dmx  -a 8 --pid=1010  | ~/tsniv2ni/tsniv2ni 1010 | ~/dablin/build/src/dablin_gtk 2>/dev/null``
@@ -127,7 +127,7 @@ You can also use other values for the ip. See https://github.com/piratfm/eti-too
 
 
   For the second mux:
-  
+
     ``neumo-dmx  -a 8 --pid=4122 | ~/eti-tools/fedi2eti 4122 239.128.72.10 50010 | ~/dablin/build/src/dablin_gtk``
 
 ### Metropolitain 11461H@5.0W
@@ -144,6 +144,19 @@ You can also use other values for the ip. See https://github.com/piratfm/eti-too
   For the second mux:
 
   ``neumo-dmx -a 8 --pid=301 | ~/eti-tools/fedi2eti  301 239.0.1.12 5002 | ~/dablin/build/src/dablin_gtk``
+
+
+### RAI DAB 12564V-S11@5.0W
+
+* Tune:
+
+  ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U0  -f 12564 -pV  -S 35293``
+
+* demux:
+
+  ``neumo-dmx -a 8 --stid-isi=11 --pid 1000 | ts2na --pid 1000 -s 0  | na2ni  | dablin_gtk``
+
+  Due to bugs in various tools, you may need to try several times until a sync is found
 
 
 
