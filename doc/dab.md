@@ -150,7 +150,7 @@ You can also use other values for the ip. See https://github.com/piratfm/eti-too
 
 * Tune:
 
-  ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U0  -f 12564 -pV  -S 35293``
+  ``neumo-tune -ctune -A blind -a 8 -r 0 -dU -U0  -f 12564000 -pV  -S 35293``
 
 * demux:
 
